@@ -1,0 +1,9 @@
+Program:
+  A simple implementation of rcopy and it's server counter part. Using 
+  the selective reject protocol.
+
+Author:
+  Orion Miller (aomiller)
+
+Notes:
+
