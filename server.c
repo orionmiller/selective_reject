@@ -16,7 +16,6 @@ int main(int argc, char *argv[])
   double error_rate;
   int status;
   pkt *RecvPkt = pkt_alloc(MAX_BUFF_SIZE);
-  pkt *SendPkt = pkt_alloc(400);
   sock *Server = server_sock(MAX_BUFF_SIZE);
 
   printf("Port: %d\n", ntohs(Server->local.sin_port));
@@ -27,8 +26,6 @@ int main(int argc, char *argv[])
     {
       if(recv_pkt(RecvPkt, Server->sock, &(Server->remote), Server->buffsize))
 	{
-	  create_pkt(SendPkt, FILE_NAME_ACK, 0, NULL, 0);
-	  send_pkt(SendPkt, Server->sock, Server->remote);
 	  printf("Received Init Packet\n");
 	  pid = s_fork();
      
@@ -106,6 +103,8 @@ void process_client(sock Old_Server, pkt InitPkt) {
       break;
     }
   }
+  free(Server);
+  free(File);
 }
 
 
@@ -173,9 +172,10 @@ STATE good_file(sock *Server, pkt *SendPkt)
 
 STATE bad_file(sock *Server, pkt *SendPkt, file *File)
 {
-  uint8_t *data = (uint8_t *)&(File->err);
+  uint32_t data  = File->err;
   uint32_t data_len = sizeof(File->err);
-  create_pkt(SendPkt, FILE_NAME_ERR_ACK, Server->seq, data, data_len);
+  data = htonl(data);
+  create_pkt(SendPkt, FILE_NAME_ERR_ACK, Server->seq, (uint8_t *)&data, data_len);
   return S_SEND;
 }
 
@@ -213,7 +213,6 @@ STATE file_transfer(sock*Server, file *File)
 }
 
 
-
 STATE file_eof(sock *Server)
 {
   STATE state = S_OPEN_FILE;
@@ -247,6 +246,8 @@ STATE file_eof(sock *Server)
 	  return S_FINISH;
 	}
     }
+  free(SendPkt);
+  free(RecvPkt);
   return S_FINISH;  
 }
 

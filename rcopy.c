@@ -56,7 +56,12 @@ void process_server(sock *Client, arg *Arg)
       break;
     }
   }
+  fflush(LocalFile->fp);
+  fclose(LocalFile->fp);
+  free(LocalFile);
+  free(RemoteFile);
 }
+
 
 STATE file_transfer(sock *Client, file *File)
 {
@@ -102,6 +107,7 @@ STATE file_transfer(sock *Client, file *File)
 /*   return S_FINISH; */
 /* } */
 
+
 STATE send_init_pkt(sock *Client, file *File)
 {
   pkt *SendPkt = pkt_alloc(Client->buffsize);
@@ -110,6 +116,7 @@ STATE send_init_pkt(sock *Client, file *File)
   free(SendPkt);
   return S_FILE_NAME;
 }
+
 
 void create_init_pkt(sock *Client, pkt *Pkt, file *File)
 {
@@ -134,6 +141,7 @@ void create_init_pkt(sock *Client, pkt *Pkt, file *File)
       printf("%X ", data[x]);
     }
 }
+
 
 STATE file_eof(sock *Client)
 {
@@ -161,11 +169,13 @@ STATE file_eof(sock *Client)
   return S_FINISH;  
 }
 
+
 STATE create_file_eof_ack(sock *Client, pkt *SendPkt)
 {
   create_pkt(SendPkt, FILE_EOF_ACK, Client->seq, NULL, 0); 
   return S_SEND;
 }
+
 
 STATE file_name(sock *Client, file *LocalFile, file *RemoteFile)
 {
@@ -214,6 +224,7 @@ STATE file_name(sock *Client, file *LocalFile, file *RemoteFile)
   return S_FILE_TRANSFER;  
 }
 
+
 STATE wait_on_ack(sock *Client, pkt *Pkt)
 {
   while (select_call(Client->sock, MAX_SEND_WAIT_TIME_S, MAX_SEND_WAIT_TIME_US))
@@ -227,6 +238,7 @@ STATE wait_on_ack(sock *Client, pkt *Pkt)
   return S_TIMEOUT_ON_ACK;
 }
 
+
 STATE timeout_on_ack(sock *Client)
 {
   if (Client->num_wait >= 10)
@@ -235,6 +247,7 @@ STATE timeout_on_ack(sock *Client)
   Client->num_wait += 1;
   return S_START;
 }
+
 
 STATE open_file(pkt *Pkt, file *File)
 {
@@ -258,6 +271,7 @@ STATE open_file(pkt *Pkt, file *File)
   return S_FINISH;
 }
 
+
 int get_file_err(pkt *Pkt)
 {
   uint32_t err;
@@ -265,6 +279,7 @@ int get_file_err(pkt *Pkt)
   err = ntohl(err);
   return (int)err;
 }
+
 
 STATE good_file(file *File)
 {
@@ -280,14 +295,16 @@ STATE good_file(file *File)
   return S_FINISH;
 }
 
+
 STATE bad_file(file *File)
 {
   if (File != NULL)
     {
-      fprintf(stderr, "Remote File Errr: %s", strerror(File->err));
+      fprintf(stderr, "Remote File Errr: %s\n", strerror(File->err));
     }
   return S_FINISH;
 }
+
 
 void process_arguments(arg *Arg, int argc, char *argv[])
 {
