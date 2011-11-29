@@ -81,6 +81,7 @@ int recv_pkt(pkt *Pkt, int socket, struct sockaddr_in *src_addr, uint32_t buffsi
 {
   int flags = 0;
   int src_addr_len = sizeof(*src_addr);
+  uint32_t i;
 
   if (Pkt != NULL && Pkt->datagram != NULL)
     {
@@ -90,6 +91,10 @@ int recv_pkt(pkt *Pkt, int socket, struct sockaddr_in *src_addr, uint32_t buffsi
       if (pkt_checksum(Pkt) == CHECKSUM_GOOD)
 	{
 	  get_hdr(Pkt);
+	  for (i = 0; i < Pkt->data_len; i++)
+	    {
+	      printf("%X ", *(Pkt->data +i));
+	    }
 	  return 1;
 	}
       else
@@ -170,7 +175,7 @@ void create_hdr(pkt *Pkt, uint32_t seq, uint8_t flag)
     {
       memset(Pkt->datagram, 0, HDR_LEN);
       s_memcpy(Pkt->datagram + HDR_SEQ_OFFSET, &n_seq, sizeof(uint32_t));
-      s_memcpy(Pkt->datagram + HDR_FLAG_OFFSET, &flag, sizeof(uint16_t));
+      s_memcpy(Pkt->datagram + HDR_FLAG_OFFSET, &flag, sizeof(uint8_t));
       n_checksum = in_cksum((unsigned short *)Pkt->datagram, Pkt->datagram_len);
       s_memcpy(Pkt->datagram + HDR_CHECKSUM_OFFSET, &n_checksum, sizeof(uint16_t));
     }
@@ -186,8 +191,8 @@ void get_hdr(pkt *Pkt)
   if (Pkt != NULL && Pkt->Hdr != NULL && Pkt->datagram != NULL)
     {
       s_memcpy(&(Pkt->Hdr->checksum), Pkt->datagram + HDR_CHECKSUM_OFFSET, sizeof(uint16_t));
-      s_memcpy(&(Pkt->Hdr->flag), Pkt->datagram + HDR_FLAG_OFFSET,  sizeof(uint16_t));
-      Pkt->Hdr->flag =  ntohs(Pkt->Hdr->flag);
+      s_memcpy(&(Pkt->Hdr->flag), Pkt->datagram + HDR_FLAG_OFFSET,  sizeof(uint8_t));
+      //      Pkt->Hdr->flag =  ntohs(Pkt->Hdr->flag);
       s_memcpy(&(Pkt->Hdr->seq), Pkt->datagram + HDR_SEQ_OFFSET, sizeof(uint32_t));
       Pkt->Hdr->seq = ntohl(Pkt->Hdr->seq);
     }
@@ -242,4 +247,13 @@ int select_call(int socket, int seconds, int useconds)
       exit(EXIT_FAILURE);
     }
   return select_out;//(FD_ISSET(socket, &fdvar));
+}
+
+
+void print_hdr(pkt *Pkt)
+{
+  printf("--HDR--\n");
+  printf("Seq: %u\nt", Pkt->Hdr->seq);
+  printf("Checksum: %u\n", Pkt->Hdr->checksum);
+  printf("Flag: %u\n", (uint32_t)Pkt->Hdr->flag);
 }

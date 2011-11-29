@@ -16,6 +16,7 @@ int main(int argc, char *argv[])
   double error_rate;
   int status;
   pkt *RecvPkt = pkt_alloc(MAX_BUFF_SIZE);
+  pkt *SendPkt = pkt_alloc(400);
   sock *Server = server_sock(MAX_BUFF_SIZE);
 
   printf("Port: %d\n", ntohs(Server->local.sin_port));
@@ -24,17 +25,22 @@ int main(int argc, char *argv[])
 
   while (TRUE)
     {
-      if(recv_pkt(RecvPkt, Server->sock, &(Server->local), Server->buffsize))
+      if(recv_pkt(RecvPkt, Server->sock, &(Server->remote), Server->buffsize))
 	{
+	  create_pkt(SendPkt, FILE_NAME_ACK, 0, NULL, 0);
+	  send_pkt(SendPkt, Server->sock, Server->remote);
+	  printf("Received Init Packet\n");
 	  pid = s_fork();
-      
+     
 	  if (pid == CHILD)
 	    {
 
-	      process_client(Server, RecvPkt);
+	      printf("Begin Processing of Client\n");
+	      process_client(*Server, *RecvPkt);
 	      exit(EXIT_SUCCESS);
 	    }
       
+	  printf("Wait for Children\n");
 	  wait_for_children(&status);
 	}
     }
@@ -63,33 +69,35 @@ void wait_for_children(int *status)
 }
 
 
-void process_client(sock *Old_Server, pkt *InitPkt) {
+void process_client(sock Old_Server, pkt InitPkt) {
   STATE state = S_START;
   sock *Server = s_malloc(sizeof(sock));
   file *File = s_malloc(sizeof(file));
 
-  transfer_setup(Server, Old_Server);
+  transfer_setup(Server, &Old_Server);
+  printf("Port: %d\n", ntohs(Server->local.sin_port));
 
   while (state != S_FINISH) {
     switch (state) {
       
     case S_START:
-      process_init_syn(Server, File, InitPkt);
+      printf("Start\n");
+      state = process_init_syn(Server, File, &InitPkt);
       break;
       
     case S_FILE_NAME:
+      printf("File Name\n");
       state = file_name(Server, File);
       break;
       
     case S_FILE_TRANSFER:
+      printf("File Transfer\n");
       state = file_transfer(Server, File);
       break;
       
     case S_FILE_EOF:
+      printf("File EOF\n");
       state = file_eof(Server);
-      break;
-      
-    case S_RECV:
       break;
 	
     default:
@@ -111,18 +119,22 @@ STATE file_name(sock*Server, file *File)
       switch (state)
 	{
 	case S_OPEN_FILE:
+	  printf("Open File\n");
 	  state = open_file(File);
 	  break;
 	  
 	case S_GOOD_FILE:
+	  printf("Good File\n");
 	  state = good_file(Server, SendPkt);
 	  break;
 	  
 	case S_BAD_FILE:
+	  printf("Bad File\n");
 	  state = bad_file(Server, SendPkt, File);
 	  break;
 
 	case S_SEND:
+	  printf("Send\n");
 	  state = S_DONE;
 	  send_pkt(SendPkt, Server->sock, Server->remote);
 	  break;
@@ -132,6 +144,7 @@ STATE file_name(sock*Server, file *File)
 	  return S_FINISH;
 	}
     }
+  free(SendPkt);
   return S_FILE_TRANSFER;  
 }
 
@@ -176,6 +189,7 @@ STATE file_transfer(sock*Server, file *File)
       switch (state)
 	{
 	case S_READ_FILE:
+	  return S_FILE_EOF;
 	  break;
 	  
 	case S_ADJUST_WINDOW:
@@ -273,21 +287,29 @@ STATE wait_on_ack(sock *Server, pkt *RecvPkt)
 
 void transfer_setup(sock *Server, sock *Old_Server)
 {
+  uint32_t len = sizeof(Server->local);
   *Server = *Old_Server;
+  s_getsockname(Server->sock, (struct sockaddr *)&(Server->local), &len);
   //getsock name stuff
 }
 
 STATE process_init_syn(sock *Server, file *File, pkt *InitPkt)
 {
+  printf("Process Init Pkt\n");
   Server->buffsize = get_buffsize(InitPkt);
+  printf("Buffsize: %u\n", Server->buffsize);
   Server->window_size = get_window_size(InitPkt);
+  printf("Window Size: %u\n", Server->window_size);
   File->name = get_filename(InitPkt);
+  printf("File Name: %s\n", File->name);
+  fflush(stdout);
   return S_FILE_NAME;
 }
 
 uint32_t get_buffsize(pkt *Pkt)
 {
   uint32_t buffsize = MAX_BUFF_SIZE;
+  printf("Getting Buffsize\n");
   s_memcpy(&buffsize, Pkt->data+DATA_BUFF_SIZE_OFF, sizeof(uint32_t));
   buffsize = ntohl(buffsize);
   return buffsize;
@@ -297,15 +319,26 @@ char *get_filename(pkt *Pkt)
 {
   char *filename;
   uint32_t len = 0;
-  len = strlen((char *)Pkt->data+DATA_FILENAME_OFF);
-  filename = s_malloc((++len));
-  s_memcpy(&filename, Pkt->data+DATA_FILENAME_OFF, len);
+  uint32_t i = 0;
+  printf("Getting Filename\n");
+  len = strlen((char *)Pkt->data+DATA_FILENAME_OFF) + 1;
+  printf("String Length %u\n", len);
+  filename = (char *)s_malloc(len);
+  printf("Malloced Filename\n");
+  s_memcpy(filename, (char *)Pkt->data+DATA_FILENAME_OFF, len);
+  printf("Memcpyed Filename\n");
+  for (i = 0; i < len; i++)
+    {
+      printf("%d: %c", i, *(Pkt->data+DATA_FILENAME_OFF+i));
+    }
+  printf("Filename: \'%s\'\n", filename);
   return filename;
 }
 
 uint32_t get_window_size(pkt *Pkt)
 {
   uint32_t window_size;
+  printf("Getting Window Size\n");
   s_memcpy(&window_size, Pkt->data+DATA_WINDOW_SIZE_OFF, sizeof(uint32_t));
   window_size = ntohl(window_size);
   return window_size;

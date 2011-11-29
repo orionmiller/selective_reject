@@ -11,7 +11,7 @@
 #define MAX_RECV_WAIT_TIME_S (10) //seconds
 #define MAX_RECV_WAIT_TIME_US (0) //micro-seconds
 
-#define MAX_SEND_WAIT_TIME_S (1) //seconds
+#define MAX_SEND_WAIT_TIME_S (10) //seconds
 #define MAX_SEND_WAIT_TIME_US (0) //micro-seconds
 
 #define MAX_TRIES (10)
@@ -49,8 +49,8 @@ enum State
   { 
     S_START, S_FINISH, S_DONE,
     S_FILE_NAME, S_OPEN_FILE, S_GOOD_FILE, S_BAD_FILE, 
-    S_FILE_TRANSFER, S_READ_FILE, S_ADJUST_WINDOW, S_SEND_WINDOW, S_TIMEOUT_ON_RESPONSE,
-    S_FILE_EOF, 
+    S_FILE_TRANSFER, S_READ_FILE, S_ADJUST_WINDOW, S_SEND_WINDOW, S_TIMEOUT_ON_DATA,
+    S_FILE_EOF, S_WRITE_TO_DISK, S_SEND_SREJ, S_SEND_RR, S_WAIT_ON_DATA,
     S_SEND, S_RECV, S_WAIT_ON_ACK, S_TIMEOUT_ON_ACK 
   };
 
@@ -76,5 +76,8 @@ STATE bad_file(file *File);
 int get_file_err(pkt *Pkt);
 STATE file_eof(sock *Client);
 void create_init_pkt(sock *Client, pkt *Pkt, file *File);
+
+STATE wait_on_data(sock *Client, window *Window);
+STATE write_data(void);
 
 #endif

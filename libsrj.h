@@ -111,7 +111,33 @@ typedef struct {
   uint32_t data_len;
 } pkt;
 
+typedef struct {
+  pkt *Pkt;
+  int32_t state;
+} frame;
 
+//--Frame States--//
+//#define FRAME_EOF
+#define FRAME_EMPTY (0)
+#define FRAME_FULL (1)
+#define FRAME_FULL_RRED (2)
+
+typedef struct {
+  frame **Frame;
+  uint32_t size;
+  uint32_t head;
+  uint32_t tail;
+} window;
+
+
+
+//algorithm
+/*
+select call - timeout
+recv/wait packet
+if ()
+
+ */
 //--sendErr--//
 #define ERROR_RATE_ZERO (0)
 
@@ -186,6 +212,9 @@ void create_hdr(pkt *Pkt, uint32_t seq, uint8_t flag);
 //
 void get_hdr(pkt *Pkt);
 
+
+// -- [ Print Header ]
+void print_hdr(pkt *Pkt);
 
 // - [ General ]
 

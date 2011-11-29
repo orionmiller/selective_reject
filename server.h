@@ -54,7 +54,7 @@ typedef enum State STATE;
 
 void process_arguments(double *error_rate, int argc, char *argv[]);
 void wait_for_children(int *status);
-void process_client(sock *Old_Server, pkt *InitPkt);
+void process_client(sock Old_Server, pkt InitPkt);
 STATE open_file(file *File);
 STATE good_file(sock *Server, pkt *SendPkt);
 STATE bad_file(sock *Server, pkt *SendPkt, file *File);
