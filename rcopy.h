@@ -14,6 +14,9 @@
 #define MAX_SEND_WAIT_TIME_S (10) //seconds
 #define MAX_SEND_WAIT_TIME_US (0) //micro-seconds
 
+#define MAX_WINDOW_WAIT_TIME_S (10)
+#define MAX_WINDOW_WAIT_TIME_US (0)
+
 #define MAX_TRIES (10)
 
 
@@ -36,12 +39,6 @@ typedef struct {
   int32_t remote_port;
 }arg;
 
-typedef struct {
-  char *name;
-  FILE *fp;
-  int err;
-}file;
-
 #define FILE_MODE "wb+"
 
 
@@ -51,7 +48,8 @@ enum State
     S_FILE_NAME, S_OPEN_FILE, S_GOOD_FILE, S_BAD_FILE, 
     S_FILE_TRANSFER, S_READ_FILE, S_ADJUST_WINDOW, S_SEND_WINDOW, S_TIMEOUT_ON_DATA,
     S_FILE_EOF, S_WRITE_TO_DISK, S_SEND_SREJ, S_SEND_RR, S_WAIT_ON_DATA,
-    S_SEND, S_RECV, S_WAIT_ON_ACK, S_TIMEOUT_ON_ACK 
+    S_SEND, S_RECV, S_WAIT_ON_ACK, S_TIMEOUT_ON_ACK ,
+    S_WRITE_DATA, S_CHECK_WINDOW
   };
 
 typedef enum State STATE;
@@ -77,7 +75,8 @@ int get_file_err(pkt *Pkt);
 STATE file_eof(sock *Client);
 void create_init_pkt(sock *Client, pkt *Pkt, file *File);
 
-STATE wait_on_data(sock *Client, window *Window);
-STATE write_data(void);
+STATE wait_on_data(sock *Client, window *Window, pkt *RecvPkt);
+STATE write_data(window *Window);
+STATE check_window(window *Window);
 
 #endif

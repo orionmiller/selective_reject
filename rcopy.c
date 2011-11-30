@@ -65,13 +65,20 @@ void process_server(sock *Client, arg *Arg)
 
 STATE file_transfer(sock *Client, file *File)
 {
-  STATE state = S_OPEN_FILE;
+  STATE state = S_WAIT_ON_DATA;
+  window *Window = window_alloc(Client);
   //  pkt *SendPkt = pkt_alloc(Client->buffsize);
+  pkt *RecvPkt = pkt_alloc(Client->buffsize);
+  
   while (state != S_DONE)
     {
       switch (state)
 	{
 	case S_ADJUST_WINDOW:
+	  break;
+
+	case S_WRITE_DATA:
+	  state = write_data(Window);
 	  break;
 
 	case S_SEND_RR:
@@ -80,13 +87,20 @@ STATE file_transfer(sock *Client, file *File)
 	case S_SEND_SREJ:
 	  break;
 
-	case S_WAIT_ON_DATA:
-	  //	  state = wait_on_data(Client, Window);
+	case S_CHECK_WINDOW:
+	  state = check_window(Window);
 	  break;
-	  
+
+	case S_WAIT_ON_DATA:
+	  state = wait_on_data(Client, Window, RecvPkt);
+	  break;
+
 	case S_TIMEOUT_ON_DATA:
 	  return S_FINISH;
 	  break;
+
+	case S_FILE_NAME:
+	  return S_FILE_NAME;
 
 	default:
 	  printf("File Transfer - Unkown Case\n");
@@ -97,15 +111,32 @@ STATE file_transfer(sock *Client, file *File)
   return S_FILE_EOF;  
 }
 
-/* STATE wait_on_data(sock *Client, window *Window) */
-/* { */
-/*   return S_FINISH; */
-/* } */
+STATE wait_on_data(sock *Client, window *Window, pkt *RecvPkt)
+{
+  while (select_call(Client->sock, MAX_WINDOW_WAIT_TIME_S, MAX_WINDOW_WAIT_TIME_US))
+    {
+      recv_pkt(RecvPkt, Client->sock, &(Client->remote), Client->buffsize);
+      if (eof_pkt(RecvPkt))
+	return S_DONE;
 
-/* STATE write_data(void) */
-/* { */
-/*   return S_FINISH; */
-/* } */
+      if (within_window(Window, RecvPkt))
+	{
+	  //do things
+	}
+    }
+
+  return S_TIMEOUT_ON_ACK;
+}
+
+STATE write_data(window *Window)
+{
+  return S_FINISH;
+}
+
+STATE check_window(window *Window)
+{
+  return S_FINISH;
+}
 
 
 STATE send_init_pkt(sock *Client, file *File)

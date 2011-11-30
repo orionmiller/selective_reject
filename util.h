@@ -35,5 +35,10 @@ void s_listen(int socket, int backlog);
 
 pid_t s_fork(void);
 
+size_t s_fwrite(const void *ptr, size_t size, size_t nmemb,
+		FILE *stream);
+
+size_t s_fread(void *ptr, size_t size, size_t nmemb, FILE *stream);
+
 
 #endif

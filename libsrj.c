@@ -257,3 +257,141 @@ void print_hdr(pkt *Pkt)
   printf("Checksum: %u\n", Pkt->Hdr->checksum);
   printf("Flag: %u\n", (uint32_t)Pkt->Hdr->flag);
 }
+
+
+int eof_pkt(pkt *Pkt)
+{
+  if (Pkt->Hdr->flag == FILE_EOF)
+    return TRUE;
+  
+  return FALSE;
+}
+
+int init_pkt(pkt *Pkt)
+{
+  if (Pkt->Hdr->flag == FILE_NAME)
+    return TRUE;
+  
+  return FALSE;
+}
+
+int data_pkt(pkt *Pkt)
+{
+  if (Pkt->Hdr->flag == DATA)
+    return TRUE;
+  
+  return FALSE;
+}
+
+
+int within_window(window *Window, pkt *Pkt)
+{
+  if (Pkt->Hdr->seq >= Window->bottom && Pkt->Hdr->seq <= Window->top)
+    return TRUE;
+  
+  return FALSE;
+}
+
+void pkt_fill_frame(window *Window, pkt *Pkt)
+{
+  uint32_t frame_num = get_frame_num(Window, Pkt->Hdr->seq);
+  if (frame_num < Window->size)
+    *(Window->Frame[frame_num]->Pkt) = *Pkt;
+}
+
+
+//DOES NOT APPROPRIATELY MAKE A PACKET YET
+void file_fill_frame(window *Window, file *File, uint32_t seq)
+{
+  frame *Frame = Window->Frame[get_frame_num(Window, seq)];
+  uint32_t size = s_fread(Frame->Pkt->data, sizeof(uint8_t), Window->buffsize, File->fp);
+  if (size == 0)
+    Frame->state = FRAME_EMPTY;
+  else
+    
+  if (feof(File->fp))
+    Window->eof = TRUE;
+}
+
+int empty_frame(window *Window, uint32_t frame_num)
+{
+  if (frame_num < Window->size && Window->Frame[frame_num]->state == FRAME_EMPTY)
+    return TRUE;
+  
+  return FALSE;
+}
+
+int full_frame(window *Window, uint32_t frame_num)
+{
+  if (frame_num < Window->size && Window->Frame[frame_num]->state == FRAME_FULL)
+    return TRUE;
+  
+  return FALSE;
+}
+
+int sent_frame(window *Window, uint32_t frame_num)
+{
+  if (frame_num < Window->size && Window->Frame[frame_num]->state == FRAME_SENT)
+    return TRUE;
+  
+  return FALSE;
+}
+
+int rred_frame(window *Window, uint32_t frame_num)
+{
+  if (frame_num < Window->size && Window->Frame[frame_num]->state == FRAME_FULL_RRED)
+    return TRUE;
+
+  return FALSE;
+}
+
+/* gets frame number based off of the window size & pkt seq num*/
+uint32_t get_frame_num(window *Window, uint32_t seq)
+{
+  return (seq % Window->size);
+}
+
+void send_frame(sock *Conn, frame *Frame)
+{
+  send_pkt(Frame->Pkt, Conn->sock, Conn->remote);
+  Frame->state = FRAME_SENT;
+}
+
+void set_frame_empty(window *Window, uint32_t seq)
+{
+  uint32_t frame_num = get_frame_num(Window, seq);
+  Window->Frame[frame_num]->state = FRAME_EMPTY;
+}
+
+void set_frame_full(window *Window, uint32_t seq)
+{
+  uint32_t frame_num = get_frame_num(Window, seq);
+  Window->Frame[frame_num]->state = FRAME_FULL;
+}
+
+window *window_alloc(sock *Conn)
+{
+  uint32_t i;
+  window *Window = (window *)s_malloc(sizeof(window));
+  Window->Frame = (frame **)s_malloc(sizeof(frame **) * Conn->window_size); //&&frame ??
+
+  for (i = 0; i < Conn->window_size; i++)
+    Window->Frame[i] = frame_alloc(Conn);
+
+  Window->size = Conn->window_size;
+  Window->top = Conn->seq + Window->size;
+  Window->bottom = Conn->seq + 1;
+  Window->rr = Window->bottom;
+  Window->srej = Window->bottom;
+  Window->eof = FALSE;
+  Window->buffsize = Conn->buffsize;
+  return Window;
+}
+
+frame *frame_alloc(sock *Conn)
+{
+  frame *Frame = (frame *)s_malloc(sizeof(frame));
+  Frame->Pkt = pkt_alloc(Conn->buffsize);
+  Frame->state = FRAME_EMPTY;
+  return Frame;
+}

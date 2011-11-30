@@ -120,24 +120,28 @@ typedef struct {
 //#define FRAME_EOF
 #define FRAME_EMPTY (0)
 #define FRAME_FULL (1)
-#define FRAME_FULL_RRED (2)
+#define FRAME_SENT (2)
+#define FRAME_FULL_RRED (3)
 
 typedef struct {
   frame **Frame;
   uint32_t size;
-  uint32_t head;
-  uint32_t tail;
+  uint32_t top;
+  uint32_t bottom;
+  uint32_t rr;
+  uint32_t srej;
+  uint32_t eof;
+  uint32_t buffsize;
+  uint32_t num_wait;
 } window;
 
 
+typedef struct{
+  char *name;
+  FILE *fp;
+  int err;
+}file;
 
-//algorithm
-/*
-select call - timeout
-recv/wait packet
-if ()
-
- */
 //--sendErr--//
 #define ERROR_RATE_ZERO (0)
 
@@ -199,9 +203,15 @@ void get_pkt(pkt *Pkt);
 //
 uint16_t pkt_checksum(pkt *Pkt);
 
+int eof_pkt(pkt *Pkt);
+
+int init_pkt(pkt *Pkt);
+
+int data_pkt(pkt *Pkt);
 
 
-// -- [ Header ]
+
+// - [ Header ]
 
 // -- [ Create Header ]
 //
@@ -227,5 +237,19 @@ int select_call(int socket, int seconds, int useconds);
 //
 void print_flag(uint8_t flag);
 
+
+// - [ Window ]
+int within_window(window *Window, pkt *Pkt);
+void pkt_fill_frame(window *Window, pkt *Pkt);
+void file_fill_frame(window *Window, file *File, uint32_t seq);
+int empty_frame(window *Window, uint32_t frame_num);
+int full_frame(window *Window, uint32_t frame_num);
+int rred_frame(window *Window, uint32_t frame_num);
+void set_frame_empty(window *Window, uint32_t seq);
+void set_frame_full(window *Window, uint32_t seq);
+uint32_t get_frame_num(window *Window, uint32_t seq);
+window *window_alloc(sock *Conn);
+frame *frame_alloc(sock *Conn);
+void send_frame(sock *Conn, frame *Frame);
 
 #endif

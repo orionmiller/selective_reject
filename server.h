@@ -20,6 +20,9 @@
 #define MAX_RECV_WAIT_TIME_S (10) //seconds
 #define MAX_RECV_WAIT_TIME_US (0) //micro-seconds
 
+#define MAX_WINDOW_WAIT_TIME_S (10)
+#define MAX_WINDOW_WAIT_TIME_US (0)
+
 #define RECEIVED_PKT (1)
 
 #define MAX_BUFF_SIZE (1400)
@@ -32,12 +35,6 @@
 
 #define ARG_ERROR_RATE (1)
 
-typedef struct {
-  char *name;
-  FILE *fp;
-  int err;
-}file;
-
 #define FILE_MODE "rb"
 
 
@@ -46,7 +43,7 @@ enum State
     S_START, S_FINISH, S_DONE,
     S_FILE_NAME, S_OPEN_FILE, S_GOOD_FILE, S_BAD_FILE, 
     S_FILE_TRANSFER, S_READ_FILE, S_ADJUST_WINDOW, S_SEND_WINDOW, S_TIMEOUT_ON_RESPONSE,
-    S_WAIT_ON_RESPONSE, S_FILE_EOF, 
+    S_WAIT_ON_RESPONSE, S_FILE_EOF, S_FILL_WINDOW,
     S_SEND, S_RECV, S_WAIT_ON_ACK, S_TIMEOUT_ON_ACK 
   };
 
@@ -69,4 +66,12 @@ STATE process_init_syn(sock *Server, file *File, pkt *InitPkt);
 char *get_filename(pkt *Pkt);
 uint32_t get_buffsize(pkt *Pkt);
 uint32_t get_window_size(pkt *Pkt);
+
+/*File Transfer*/
+STATE adjust_window(window *Window);
+STATE fill_window(window *Window, file *File);
+STATE send_window(sock *Server, window *Window);
+STATE wait_on_response(sock *Server, window *Window, pkt *RecvPkt);
+STATE timeout_on_response(window *Window);
+
 #endif 

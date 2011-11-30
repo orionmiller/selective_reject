@@ -182,26 +182,34 @@ STATE bad_file(sock *Server, pkt *SendPkt, file *File)
 
 STATE file_transfer(sock*Server, file *File)
 {
-  STATE state = S_OPEN_FILE;
-
+  STATE state = S_DONE;
+  window *Window = window_alloc(Server);
+  pkt *RecvPkt = pkt_alloc(Server->buffsize);
+  // renitialize window attributes
+  //   -- one attribute to initialize is num_wait = 0
+  //special case for 1st window --- setup window & state = S_FILL_WINDOW
   while (state != S_DONE)
     {
       switch (state)
 	{
-	case S_READ_FILE:
-	  return S_FILE_EOF;
-	  break;
-	  
 	case S_ADJUST_WINDOW:
+	  state = adjust_window(Window);
+	  break;
+
+	case S_FILL_WINDOW:
+	  state = fill_window(Window, File);
 	  break;
 	  
 	case S_SEND_WINDOW:
+	  state = send_window(Server, Window);
 	  break;
 
 	case S_WAIT_ON_RESPONSE:
+	  state = wait_on_response(Server, Window, RecvPkt);
 	  break;
 	  
 	case S_TIMEOUT_ON_RESPONSE:
+	  state = timeout_on_response(Window);
 	  break;
 
 	default:
@@ -212,13 +220,93 @@ STATE file_transfer(sock*Server, file *File)
   return S_FILE_EOF;  
 }
 
+STATE adjust_window(window *Window)
+{
+  uint32_t seq;
+  if (Window->rr > Window->srej)
+    seq = Window->rr - 1;
+  else
+    seq = Window->srej - 1;
+
+  for (;seq >= Window->bottom; seq--)
+      set_frame_empty(Window, seq);
+
+  Window->bottom = seq + 1;
+  Window->top = Window->bottom + Window->size - 1;
+
+  return S_FILL_WINDOW;
+}
+
+STATE fill_window(window *Window, file *File)
+{
+  uint32_t seq = Window->bottom;
+
+  if (Window->eof)
+    return S_SEND_WINDOW;
+  
+  for (; seq <= Window->top; seq++)
+    if (empty_frame(Window, get_frame_num(Window, seq)))
+      break;
+
+  for (; Window->eof == FALSE && seq <= Window->top; seq++)
+    file_fill_frame(Window, File, seq);
+
+  return S_SEND_WINDOW;
+}
+
+STATE send_window(sock *Server, window *Window)
+{
+  uint32_t seq = Window->bottom;
+  for (; seq <= Window->top; seq++)
+    if (full_frame(Window, get_frame_num(Window, seq)))
+      {
+	send_frame(Server, Window->Frame[get_frame_num(Window, seq)]);
+	if (select_call(Server->sock, 0, 0))
+	  return S_WAIT_ON_RESPONSE;
+      }
+
+  return S_WAIT_ON_RESPONSE;
+}
+
+
+STATE wait_on_response(sock *Server, window *Window, pkt *RecvPkt)
+{
+  if (select_call(Server->sock, MAX_WINDOW_WAIT_TIME_S, MAX_WINDOW_WAIT_TIME_US))
+    {
+      return S_FINISH;
+      //return process_pkt(Window, RecvPkt);
+    }
+  // if (select call for a second)
+  //  return process_pkt(RecvPkt);
+  return S_WAIT_ON_RESPONSE;
+}
+
+//process_pkt RecvPkt
+// if Pkt is RR (boundary checks?)
+//  Window->rr = RR
+// if Pkt is SREJ (currently going with no boundary checks for SREJ)
+//  Window->srej = SREJ
+//  set all packets as not-sent
+// 
+//  call adjust window
+STATE timeout_on_response(window *Window)
+{
+  if (Window->num_wait < MAX_TRIES)
+    {
+      Window->num_wait += 1;
+      return S_SEND_WINDOW;
+    }
+  return S_FINISH;
+}
+
 
 STATE file_eof(sock *Server)
 {
-  STATE state = S_OPEN_FILE;
+  STATE state = S_FILE_EOF;
   pkt *SendPkt = pkt_alloc(Server->buffsize);
   pkt *RecvPkt = pkt_alloc(Server->buffsize);
   int num_wait = 0;
+  Server->num_wait = 0;
 
   while (state != S_DONE) 
     {
@@ -262,7 +350,6 @@ STATE create_file_eof(sock *Server, pkt *SendPkt)
   create_pkt(SendPkt, FILE_EOF, Server->seq, NULL, 0);
   return S_SEND;
 }
-
 
 STATE timeout_on_ack(int *num_wait)
 {

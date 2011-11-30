@@ -112,3 +112,26 @@ pid_t s_fork(void)
   return pid;
 }
 
+
+size_t s_fread(void *ptr, size_t size, size_t nmemb, FILE *stream)
+{
+  size_t num_read  = fread(ptr, size, nmemb, stream);
+  if(ferror(stream))
+    {
+      perror("s_fread");
+      exit(EXIT_FAILURE);
+    }
+  return num_read;
+}
+
+size_t s_fwrite(const void *ptr, size_t size, size_t nmemb,
+	      FILE *stream)
+{
+  size_t num_read = fwrite(ptr, size, nmemb, stream);
+  if(ferror(stream))
+    {
+      perror("s_fread");
+      exit(EXIT_FAILURE);
+    }
+  return num_read;
+}
