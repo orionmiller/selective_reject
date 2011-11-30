@@ -25,7 +25,7 @@
 
 #define RECEIVED_PKT (1)
 
-#define MAX_BUFF_SIZE (1400)
+
 
 #define CHILD (0)
 #define WAIT_ALL_CHILDREN (-1)
@@ -73,5 +73,6 @@ STATE fill_window(window *Window, file *File);
 STATE send_window(sock *Server, window *Window);
 STATE wait_on_response(sock *Server, window *Window, pkt *RecvPkt);
 STATE timeout_on_response(window *Window);
+STATE process_pkt (window *Window, pkt *Pkt);
 
 #endif 

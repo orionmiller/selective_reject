@@ -212,6 +212,9 @@ STATE file_transfer(sock*Server, file *File)
 	  state = timeout_on_response(Window);
 	  break;
 
+	case S_FILE_NAME:
+	  return S_FILE_NAME;
+
 	default:
 	  printf("File Transfer - Unkown Case\n");
 	  return S_FINISH;
@@ -222,19 +225,26 @@ STATE file_transfer(sock*Server, file *File)
 
 STATE adjust_window(window *Window)
 {
+  //make sure funciton can break out if eof and RR is above highest sent pkt
   uint32_t seq;
-  if (Window->rr > Window->srej)
-    seq = Window->rr - 1;
-  else
-    seq = Window->srej - 1;
+  if (Window->eof && Window->rr > Window->top_sent)
+    return S_DONE;
+  if (Window->rr > Window->bottom || Window->srej > Window->bottom)
+    {
+      if (Window->rr > Window->srej)
+	seq = Window->rr - 1;
+      else
+	seq = Window->srej - 1;
 
-  for (;seq >= Window->bottom; seq--)
-      set_frame_empty(Window, seq);
-
-  Window->bottom = seq + 1;
-  Window->top = Window->bottom + Window->size - 1;
-
-  return S_FILL_WINDOW;
+      for (;seq >= Window->bottom; seq--)
+	set_frame_empty(Window, seq);
+      
+      Window->bottom = seq + 1;
+      Window->top = Window->bottom + Window->size - 1;
+      
+      return S_FILL_WINDOW;
+    }
+  return S_SEND_WINDOW;
 }
 
 STATE fill_window(window *Window, file *File)
@@ -261,6 +271,8 @@ STATE send_window(sock *Server, window *Window)
     if (full_frame(Window, get_frame_num(Window, seq)))
       {
 	send_frame(Server, Window->Frame[get_frame_num(Window, seq)]);
+	if (seq > Window->top_sent)
+	  Window->top_sent = seq;
 	if (select_call(Server->sock, 0, 0))
 	  return S_WAIT_ON_RESPONSE;
       }
@@ -272,13 +284,33 @@ STATE send_window(sock *Server, window *Window)
 STATE wait_on_response(sock *Server, window *Window, pkt *RecvPkt)
 {
   if (select_call(Server->sock, MAX_WINDOW_WAIT_TIME_S, MAX_WINDOW_WAIT_TIME_US))
+      return process_pkt(Window, RecvPkt);
+
+  return S_TIMEOUT_ON_RESPONSE;
+}
+
+STATE process_pkt (window *Window, pkt *Pkt)
+{
+  switch (Pkt->Hdr->flag)
     {
+    case RR:
+      if (Pkt->Hdr->seq > Window->rr)
+	Window->rr = Pkt->Hdr->seq;
+      return S_ADJUST_WINDOW;
+
+    case SREJ:
+      if (Pkt->Hdr->seq > Window->srej)
+	Window->srej = Pkt->Hdr->seq;
+      return S_ADJUST_WINDOW;
+
+    case FILE_NAME:
+      return S_FILE_NAME;
+      break;
+
+    default:
       return S_FINISH;
-      //return process_pkt(Window, RecvPkt);
+
     }
-  // if (select call for a second)
-  //  return process_pkt(RecvPkt);
-  return S_WAIT_ON_RESPONSE;
 }
 
 //process_pkt RecvPkt
@@ -291,9 +323,13 @@ STATE wait_on_response(sock *Server, window *Window, pkt *RecvPkt)
 //  call adjust window
 STATE timeout_on_response(window *Window)
 {
+  uint32_t seq;
   if (Window->num_wait < MAX_TRIES)
     {
       Window->num_wait += 1;
+      for (seq = Window->bottom; seq <= Window->top; seq++)
+	if (sent_frame(Window, get_frame_num(Window, seq)))
+	  set_frame_full(Window, get_frame_num(Window, seq));
       return S_SEND_WINDOW;
     }
   return S_FINISH;

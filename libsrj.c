@@ -303,11 +303,14 @@ void pkt_fill_frame(window *Window, pkt *Pkt)
 //DOES NOT APPROPRIATELY MAKE A PACKET YET
 void file_fill_frame(window *Window, file *File, uint32_t seq)
 {
+  static uint8_t data[MAX_BUFF_SIZE];
   frame *Frame = Window->Frame[get_frame_num(Window, seq)];
-  uint32_t size = s_fread(Frame->Pkt->data, sizeof(uint8_t), Window->buffsize, File->fp);
-  if (size == 0)
+  uint32_t data_len = s_fread(data, sizeof(uint8_t), Window->buffsize, File->fp);
+
+  if (data_len == 0)
     Frame->state = FRAME_EMPTY;
   else
+    create_pkt(Frame->Pkt, DATA, seq, data, data_len);
     
   if (feof(File->fp))
     Window->eof = TRUE;
@@ -337,13 +340,13 @@ int sent_frame(window *Window, uint32_t frame_num)
   return FALSE;
 }
 
-int rred_frame(window *Window, uint32_t frame_num)
-{
-  if (frame_num < Window->size && Window->Frame[frame_num]->state == FRAME_FULL_RRED)
-    return TRUE;
+/* int rred_frame(window *Window, uint32_t frame_num) */
+/* { */
+/*   if (frame_num < Window->size && Window->Frame[frame_num]->state == FRAME_FULL_RRED) */
+/*     return TRUE; */
 
-  return FALSE;
-}
+/*   return FALSE; */
+/* } */
 
 /* gets frame number based off of the window size & pkt seq num*/
 uint32_t get_frame_num(window *Window, uint32_t seq)
@@ -357,9 +360,8 @@ void send_frame(sock *Conn, frame *Frame)
   Frame->state = FRAME_SENT;
 }
 
-void set_frame_empty(window *Window, uint32_t seq)
+void set_frame_empty(window *Window, uint32_t frame_num)
 {
-  uint32_t frame_num = get_frame_num(Window, seq);
   Window->Frame[frame_num]->state = FRAME_EMPTY;
 }
 

@@ -100,7 +100,7 @@ typedef struct {
 
 
 //--Packet--//
-
+#define MAX_BUFF_SIZE (1400)
 #define CHECKSUM_GOOD (0)
 
 typedef struct {
@@ -121,7 +121,7 @@ typedef struct {
 #define FRAME_EMPTY (0)
 #define FRAME_FULL (1)
 #define FRAME_SENT (2)
-#define FRAME_FULL_RRED (3)
+//#define FRAME_FULL_RRED (3)
 
 typedef struct {
   frame **Frame;
@@ -133,6 +133,7 @@ typedef struct {
   uint32_t eof;
   uint32_t buffsize;
   uint32_t num_wait;
+  uint32_t top_sent;
 } window;
 
 
@@ -244,9 +245,10 @@ void pkt_fill_frame(window *Window, pkt *Pkt);
 void file_fill_frame(window *Window, file *File, uint32_t seq);
 int empty_frame(window *Window, uint32_t frame_num);
 int full_frame(window *Window, uint32_t frame_num);
-int rred_frame(window *Window, uint32_t frame_num);
+//int rred_frame(window *Window, uint32_t frame_num);
+int sent_frame(window *Window, uint32_t frame_num);
 void set_frame_empty(window *Window, uint32_t seq);
-void set_frame_full(window *Window, uint32_t seq);
+void set_frame_full(window *Window, uint32_t frame_num);
 uint32_t get_frame_num(window *Window, uint32_t seq);
 window *window_alloc(sock *Conn);
 frame *frame_alloc(sock *Conn);
