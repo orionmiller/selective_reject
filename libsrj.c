@@ -295,7 +295,7 @@ int within_window(window *Window, pkt *Pkt)
 void pkt_fill_frame(window *Window, pkt *Pkt)
 {
   uint32_t frame_num = get_frame_num(Window, Pkt->Hdr->seq);
-  if (frame_num < Window->size)
+  if (frame_num < Window->size && empty_frame(Window, frame_num))
     *(Window->Frame[frame_num]->Pkt) = *Pkt;
 }
 
@@ -310,10 +310,18 @@ void file_fill_frame(window *Window, file *File, uint32_t seq)
   if (data_len == 0)
     Frame->state = FRAME_EMPTY;
   else
-    create_pkt(Frame->Pkt, DATA, seq, data, data_len);
-    
+    {
+      create_pkt(Frame->Pkt, DATA, seq, data, data_len);
+      Frame->state = FRAME_FULL;
+    }
+
+  printf("Pkt data_len %u\n", data_len);
+
   if (feof(File->fp))
     Window->eof = TRUE;
+
+  if (Window->eof)
+    printf("File is now at EOF\n");
 }
 
 int empty_frame(window *Window, uint32_t frame_num)
@@ -378,7 +386,10 @@ window *window_alloc(sock *Conn)
   Window->Frame = (frame **)s_malloc(sizeof(frame **) * Conn->window_size); //&&frame ??
 
   for (i = 0; i < Conn->window_size; i++)
-    Window->Frame[i] = frame_alloc(Conn);
+    {
+      Window->Frame[i] = frame_alloc(Conn);
+      Window->Frame[i]->state = FRAME_EMPTY;
+    }
 
   Window->size = Conn->window_size;
   Window->top = Conn->seq + Window->size;

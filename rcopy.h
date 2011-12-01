@@ -75,8 +75,13 @@ int get_file_err(pkt *Pkt);
 STATE file_eof(sock *Client);
 void create_init_pkt(sock *Client, pkt *Pkt, file *File);
 
+STATE adjust_window(window *Window);
+STATE write_data(window *Window, file *File);
 STATE wait_on_data(sock *Client, window *Window, pkt *RecvPkt);
-STATE write_data(window *Window);
-STATE check_window(window *Window);
+void write_frame(window *Window, file *File, uint32_t seq);
+STATE send_srej(sock *Client, window *Window, pkt *Pkt);
+STATE send_rr(sock *Client, window *Window, pkt *Pkt);
+
+//STATE check_window(window *Window);
 
 #endif

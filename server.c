@@ -182,9 +182,11 @@ STATE bad_file(sock *Server, pkt *SendPkt, file *File)
 
 STATE file_transfer(sock*Server, file *File)
 {
-  STATE state = S_DONE;
+  STATE state = S_FILL_WINDOW;
   window *Window = window_alloc(Server);
   pkt *RecvPkt = pkt_alloc(Server->buffsize);
+  //  Window->bottom += 1;
+  //  Window->top += 1;
   // renitialize window attributes
   //   -- one attribute to initialize is num_wait = 0
   //special case for 1st window --- setup window & state = S_FILL_WINDOW
@@ -193,27 +195,35 @@ STATE file_transfer(sock*Server, file *File)
       switch (state)
 	{
 	case S_ADJUST_WINDOW:
+	  printf("Adjust Window\n");
 	  state = adjust_window(Window);
 	  break;
 
 	case S_FILL_WINDOW:
+	  printf("Fill Window\n");
 	  state = fill_window(Window, File);
 	  break;
 	  
 	case S_SEND_WINDOW:
+	  printf("Send Window\n");
 	  state = send_window(Server, Window);
 	  break;
 
 	case S_WAIT_ON_RESPONSE:
+	  printf("Wait On Response\n");
 	  state = wait_on_response(Server, Window, RecvPkt);
 	  break;
 	  
 	case S_TIMEOUT_ON_RESPONSE:
+	  printf("Timeout On Response\n");
 	  state = timeout_on_response(Window);
 	  break;
 
 	case S_FILE_NAME:
 	  return S_FILE_NAME;
+
+	case S_FINISH:
+	  return S_FINISH;
 
 	default:
 	  printf("File Transfer - Unkown Case\n");
@@ -231,15 +241,12 @@ STATE adjust_window(window *Window)
     return S_DONE;
   if (Window->rr > Window->bottom || Window->srej > Window->bottom)
     {
-      if (Window->rr > Window->srej)
-	seq = Window->rr - 1;
-      else
-	seq = Window->srej - 1;
+      seq = (Window->rr > Window->srej) ? (Window->rr -1) : (Window->srej -1);
 
       for (;seq >= Window->bottom; seq--)
 	set_frame_empty(Window, seq);
       
-      Window->bottom = seq + 1;
+      Window->bottom = (Window->rr > Window->srej) ? (Window->rr) : (Window->srej);
       Window->top = Window->bottom + Window->size - 1;
       
       return S_FILL_WINDOW;
@@ -257,7 +264,7 @@ STATE fill_window(window *Window, file *File)
   for (; seq <= Window->top; seq++)
     if (empty_frame(Window, get_frame_num(Window, seq)))
       break;
-
+  printf("Fill Seq Start: %u\n", seq);
   for (; Window->eof == FALSE && seq <= Window->top; seq++)
     file_fill_frame(Window, File, seq);
 
@@ -268,15 +275,17 @@ STATE send_window(sock *Server, window *Window)
 {
   uint32_t seq = Window->bottom;
   for (; seq <= Window->top; seq++)
-    if (full_frame(Window, get_frame_num(Window, seq)))
-      {
+    {
+      if (full_frame(Window, get_frame_num(Window, seq)))
+	{
 	send_frame(Server, Window->Frame[get_frame_num(Window, seq)]);
+	printf("Sent Frame: seq %u\n", seq);
 	if (seq > Window->top_sent)
 	  Window->top_sent = seq;
-	if (select_call(Server->sock, 0, 0))
-	  return S_WAIT_ON_RESPONSE;
-      }
-
+	//if (select_call(Server->sock, 0, 0))
+	//  return S_WAIT_ON_RESPONSE;
+	}
+    }
   return S_WAIT_ON_RESPONSE;
 }
 
@@ -284,21 +293,26 @@ STATE send_window(sock *Server, window *Window)
 STATE wait_on_response(sock *Server, window *Window, pkt *RecvPkt)
 {
   if (select_call(Server->sock, MAX_WINDOW_WAIT_TIME_S, MAX_WINDOW_WAIT_TIME_US))
-      return process_pkt(Window, RecvPkt);
+    return process_pkt(Server, Window, RecvPkt);
 
   return S_TIMEOUT_ON_RESPONSE;
 }
 
-STATE process_pkt (window *Window, pkt *Pkt)
+STATE process_pkt (sock *Server, window *Window, pkt *Pkt)
 {
+  printf("Process Pkt\n");
+  recv_pkt(Pkt, Server->sock, &(Server->remote), Server->buffsize);
+  printf("Received Pkt\n");
   switch (Pkt->Hdr->flag)
     {
     case RR:
+      printf("Received an RR\n");
       if (Pkt->Hdr->seq > Window->rr)
 	Window->rr = Pkt->Hdr->seq;
       return S_ADJUST_WINDOW;
 
     case SREJ:
+      printf("Received a RR\n");
       if (Pkt->Hdr->seq > Window->srej)
 	Window->srej = Pkt->Hdr->seq;
       return S_ADJUST_WINDOW;
@@ -308,6 +322,7 @@ STATE process_pkt (window *Window, pkt *Pkt)
       break;
 
     default:
+      printf("File Transfer -- Unknown Packet\n");
       return S_FINISH;
 
     }

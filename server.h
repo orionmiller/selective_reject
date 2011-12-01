@@ -20,7 +20,7 @@
 #define MAX_RECV_WAIT_TIME_S (10) //seconds
 #define MAX_RECV_WAIT_TIME_US (0) //micro-seconds
 
-#define MAX_WINDOW_WAIT_TIME_S (10)
+#define MAX_WINDOW_WAIT_TIME_S (1)
 #define MAX_WINDOW_WAIT_TIME_US (0)
 
 #define RECEIVED_PKT (1)
@@ -73,6 +73,6 @@ STATE fill_window(window *Window, file *File);
 STATE send_window(sock *Server, window *Window);
 STATE wait_on_response(sock *Server, window *Window, pkt *RecvPkt);
 STATE timeout_on_response(window *Window);
-STATE process_pkt (window *Window, pkt *Pkt);
+STATE process_pkt (sock *Server, window *Window, pkt *Pkt);
 
 #endif 

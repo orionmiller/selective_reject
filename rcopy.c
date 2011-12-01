@@ -67,40 +67,45 @@ STATE file_transfer(sock *Client, file *File)
 {
   STATE state = S_WAIT_ON_DATA;
   window *Window = window_alloc(Client);
-  //  pkt *SendPkt = pkt_alloc(Client->buffsize);
+  pkt *SendPkt = pkt_alloc(Client->buffsize);
   pkt *RecvPkt = pkt_alloc(Client->buffsize);
+  Window->rr = 1;
+  printf("Rcopy bottom: %u top:%u\n", Window->bottom, Window->top);
   
   while (state != S_DONE)
     {
       switch (state)
 	{
-	case S_ADJUST_WINDOW:
-	  break;
-
-	case S_WRITE_DATA:
-	  state = write_data(Window);
-	  break;
-
-	case S_SEND_RR:
-	  break;
-
-	case S_SEND_SREJ:
-	  break;
-
-	case S_CHECK_WINDOW:
-	  state = check_window(Window);
-	  break;
 
 	case S_WAIT_ON_DATA:
+	  printf("Wait On Data\n");
 	  state = wait_on_data(Client, Window, RecvPkt);
 	  break;
 
-	case S_TIMEOUT_ON_DATA:
-	  return S_FINISH;
+	case S_SEND_RR:
+	  printf("Send RR\n");
+	  state = send_rr(Client, Window, SendPkt);
 	  break;
 
-	case S_FILE_NAME:
-	  return S_FILE_NAME;
+	case S_SEND_SREJ:
+	  printf("Send SREJ\n");
+	  state = send_srej(Client, Window, SendPkt);
+	  break;
+
+	case S_WRITE_DATA:
+	  printf("Write Data\n");
+	  state = write_data(Window, File);
+	  break;
+
+	case S_ADJUST_WINDOW:
+	  printf("Adjust Window\n");
+	  state = adjust_window(Window);
+	  break;
+
+	case S_TIMEOUT_ON_DATA:
+	  printf("Timeout On Data\n");
+	  return S_FINISH;
+	  break;
 
 	default:
 	  printf("File Transfer - Unkown Case\n");
@@ -111,31 +116,81 @@ STATE file_transfer(sock *Client, file *File)
   return S_FILE_EOF;  
 }
 
+STATE send_srej(sock *Client, window *Window, pkt *Pkt)
+{
+  create_pkt(Pkt, SREJ, Window->rr, NULL, 0);
+  send_pkt(Pkt, Client->sock, Client->remote);
+  return S_WAIT_ON_DATA; //maybe s_write_data
+}
+
+STATE send_rr(sock *Client, window *Window, pkt *Pkt)
+{
+  create_pkt(Pkt, RR, Window->rr, NULL, 0);
+  send_pkt(Pkt, Client->sock, Client->remote);
+  return S_WRITE_DATA;
+}
+
 STATE wait_on_data(sock *Client, window *Window, pkt *RecvPkt)
 {
+  printf ("Select Call\n");
   while (select_call(Client->sock, MAX_WINDOW_WAIT_TIME_S, MAX_WINDOW_WAIT_TIME_US))
     {
       recv_pkt(RecvPkt, Client->sock, &(Client->remote), Client->buffsize);
       if (eof_pkt(RecvPkt))
-	return S_DONE;
-
-      if (within_window(Window, RecvPkt))
 	{
-	  //do things
+	  Client->seq = RecvPkt->Hdr->seq;
+	  return S_DONE;
+	}
+
+      if (within_window(Window, RecvPkt) && data_pkt(RecvPkt))
+	{
+	  pkt_fill_frame(Window, RecvPkt);
+	  if (RecvPkt->Hdr->seq == Window->rr)
+	    {
+	      Window->rr += 1;
+	      return S_SEND_RR;
+	    }
+	  if (RecvPkt->Hdr->seq > Window->rr)
+	    return S_SEND_SREJ;
 	}
     }
 
-  return S_TIMEOUT_ON_ACK;
+  return S_TIMEOUT_ON_DATA;
 }
 
-STATE write_data(window *Window)
+STATE adjust_window(window *Window)
 {
-  return S_FINISH;
+  uint32_t seq;
+
+  if (Window->rr > Window->bottom || Window->srej > Window->bottom)
+    {
+      seq = (Window->rr > Window->srej) ? (Window->rr -1) : (Window->srej -1);
+
+      for (;seq >= Window->bottom; seq--)
+	set_frame_empty(Window, seq);
+      
+      Window->bottom = (Window->rr > Window->srej) ? (Window->rr) : (Window->srej);
+      Window->top = Window->bottom + Window->size - 1;
+    }
+  return S_WAIT_ON_DATA;
 }
 
-STATE check_window(window *Window)
+STATE write_data(window *Window, file *File)
 {
-  return S_FINISH;
+  uint32_t seq;
+  uint32_t rtop = (Window->rr > Window->srej) ? (Window->rr) : (Window->srej);
+  
+  for (seq = Window->bottom; seq < Window->top && seq < rtop; seq ++)
+    write_frame(Window, File, seq);
+
+  fflush(File->fp);
+  return S_ADJUST_WINDOW;
+}
+
+void write_frame(window *Window, file *File, uint32_t seq)
+{
+  pkt *Pkt = Window->Frame[get_frame_num(Window, seq)]->Pkt;
+  s_fwrite(Pkt->data, sizeof(uint8_t), Pkt->data_len, File->fp);
 }
 
 
