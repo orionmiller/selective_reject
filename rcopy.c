@@ -76,7 +76,6 @@ STATE file_transfer(sock *Client, file *File)
     {
       switch (state)
 	{
-
 	case S_WAIT_ON_DATA:
 	  printf("Wait On Data\n");
 	  state = wait_on_data(Client, Window, RecvPkt);
@@ -113,6 +112,10 @@ STATE file_transfer(sock *Client, file *File)
 	  
 	}
     }
+
+  free(Window);
+  free(RecvPkt);
+  free(SendPkt);
   return S_FILE_EOF;  
 }
 
@@ -127,6 +130,9 @@ STATE send_rr(sock *Client, window *Window, pkt *Pkt)
 {
   create_pkt(Pkt, RR, Window->rr, NULL, 0);
   send_pkt(Pkt, Client->sock, Client->remote);
+  //  send_pkt(Pkt, Client->sock, Client->remote);
+  //  send_pkt(Pkt, Client->sock, Client->remote);
+
   return S_WRITE_DATA;
 }
 
@@ -141,6 +147,9 @@ STATE wait_on_data(sock *Client, window *Window, pkt *RecvPkt)
 	  Client->seq = RecvPkt->Hdr->seq;
 	  return S_DONE;
 	}
+
+      if (data_pkt(RecvPkt) && RecvPkt->Hdr->seq < Window->rr)
+	return S_SEND_RR;
 
       if (within_window(Window, RecvPkt) && data_pkt(RecvPkt))
 	{
@@ -167,11 +176,12 @@ STATE adjust_window(window *Window)
       seq = (Window->rr > Window->srej) ? (Window->rr -1) : (Window->srej -1);
 
       for (;seq >= Window->bottom; seq--)
-	set_frame_empty(Window, seq);
+	set_frame_empty(Window, get_frame_num(Window, seq));
       
       Window->bottom = (Window->rr > Window->srej) ? (Window->rr) : (Window->srej);
       Window->top = Window->bottom + Window->size - 1;
     }
+  print_window(Window);
   return S_WAIT_ON_DATA;
 }
 
@@ -189,8 +199,12 @@ STATE write_data(window *Window, file *File)
 
 void write_frame(window *Window, file *File, uint32_t seq)
 {
-  pkt *Pkt = Window->Frame[get_frame_num(Window, seq)]->Pkt;
-  s_fwrite(Pkt->data, sizeof(uint8_t), Pkt->data_len, File->fp);
+  frame *Frame = Window->Frame[get_frame_num(Window, seq)];
+  if (full_frame(Window, get_frame_num(Window, seq)))
+    {
+      s_fwrite(Frame->Pkt->data, sizeof(uint8_t), Frame->Pkt->data_len, File->fp);
+      Frame->state = FRAME_WRITTEN;
+    }
 }
 
 
@@ -226,12 +240,13 @@ void create_init_pkt(sock *Client, pkt *Pkt, file *File)
     {
       printf("%X ", data[x]);
     }
+  free(data);
 }
 
 
 STATE file_eof(sock *Client)
 {
-  STATE state = S_OPEN_FILE;
+  STATE state = S_FILE_EOF;
   pkt *SendPkt = pkt_alloc(Client->buffsize);
 
   while (state != S_DONE) 
@@ -239,10 +254,12 @@ STATE file_eof(sock *Client)
       switch (state)
 	{
 	case S_FILE_EOF:
+	  printf("Create File EOF\n");
 	  state = create_file_eof_ack(Client, SendPkt);
 	  break;
 
 	case S_SEND:
+	  printf("Send File EOF\n");
 	  send_pkt(SendPkt, Client->sock, Client->remote);
 	  state = S_DONE;
 	  break;
@@ -252,6 +269,7 @@ STATE file_eof(sock *Client)
 	  return S_FINISH;
 	}
     }
+  free(SendPkt);
   return S_FINISH;  
 }
 

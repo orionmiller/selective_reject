@@ -24,17 +24,17 @@ int s_socket(int domain, int type, int protocol)
   return sock_d;
 }
 
-ssize_t s_sendto(int socket, const void *message, size_t length, int flags, const struct sockaddr *dest_addr, socklen_t dest_len)
-{
-  ssize_t ret_val;
-  ret_val = sendto(socket, message, length, flags, dest_addr, dest_len);
-  if (ret_val == -1 || ret_val != length)
-    {
-      perror("s_sendto");
-      exit(EXIT_FAILURE);
-    }
-  return ret_val;
-}
+/* ssize_t s_sendto(int socket, const void *message, size_t length, int flags, const struct sockaddr *dest_addr, socklen_t dest_len) */
+/* { */
+/*   ssize_t ret_val; */
+/*   ret_val = sendto(socket, message, length, flags, dest_addr, dest_len); */
+/*   if (ret_val == -1 || ret_val != length) */
+/*     { */
+/*       perror("s_sendto"); */
+/*       exit(EXIT_FAILURE); */
+/*     } */
+/*   return ret_val; */
+/* } */
 
 ssize_t s_recvfrom(int socket, void *buffer, size_t length, int flags, struct sockaddr *address, socklen_t *address_len)
 {

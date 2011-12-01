@@ -35,14 +35,14 @@ echo:
 	@echo "*** Building $@"
 	$(CC) -c $(CFLAGS) $< -o $@ $(LIBS)
 
-rcopy: rcopy.c util.c libsrj.c
+rcopy: rcopy.c util.c
 	@echo "-------------------------------"
 	@echo "*** Linking $@ with library $(LIBNAME)... "
 	$(CC) $(CFLAGS) -o $@ $^ $(LIBNAME) $(LIBS)
 	@echo "*** Linking Complete!"
 	@echo "-------------------------------"
 
-server: server.c util.c libsrj.c
+server: server.c util.c
 	@echo "-------------------------------"
 	@echo "*** Linking $@ with library $(LIBNAME)... "
 	$(CC) $(CFLAGS) -o $@ $^ $(LIBNAME) $(LIBS)

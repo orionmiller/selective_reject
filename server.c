@@ -26,19 +26,21 @@ int main(int argc, char *argv[])
     {
       if(recv_pkt(RecvPkt, Server->sock, &(Server->remote), Server->buffsize))
 	{
-	  printf("Received Init Packet\n");
-	  pid = s_fork();
-     
-	  if (pid == CHILD)
+	  if (init_pkt(RecvPkt))
 	    {
-
-	      printf("Begin Processing of Client\n");
-	      process_client(*Server, *RecvPkt);
-	      exit(EXIT_SUCCESS);
+	      printf("Received Init Packet\n");
+	      pid = s_fork();
+     
+	      if (pid == CHILD)
+		{
+		  printf("Begin Processing of Client\n");
+		  process_client(*Server, *RecvPkt);
+		  exit(EXIT_SUCCESS);
+		}
+	         
+	      printf("Wait for Children\n");
+	      wait_for_children(&status);
 	    }
-      
-	  printf("Wait for Children\n");
-	  wait_for_children(&status);
 	}
     }
 
@@ -185,6 +187,7 @@ STATE file_transfer(sock*Server, file *File)
   STATE state = S_FILL_WINDOW;
   window *Window = window_alloc(Server);
   pkt *RecvPkt = pkt_alloc(Server->buffsize);
+  Window->rr = 0;
   //  Window->bottom += 1;
   //  Window->top += 1;
   // renitialize window attributes
@@ -206,7 +209,7 @@ STATE file_transfer(sock*Server, file *File)
 	  
 	case S_SEND_WINDOW:
 	  printf("Send Window\n");
-	  state = send_window(Server, Window);
+	  state = send_window(Server, Window, RecvPkt);
 	  break;
 
 	case S_WAIT_ON_RESPONSE:
@@ -239,18 +242,21 @@ STATE adjust_window(window *Window)
   uint32_t seq;
   if (Window->eof && Window->rr > Window->top_sent)
     return S_DONE;
+
   if (Window->rr > Window->bottom || Window->srej > Window->bottom)
     {
       seq = (Window->rr > Window->srej) ? (Window->rr -1) : (Window->srej -1);
 
       for (;seq >= Window->bottom; seq--)
-	set_frame_empty(Window, seq);
+	set_frame_empty(Window, get_frame_num(Window, seq));
       
       Window->bottom = (Window->rr > Window->srej) ? (Window->rr) : (Window->srej);
       Window->top = Window->bottom + Window->size - 1;
       
+      print_window(Window);
       return S_FILL_WINDOW;
     }
+  print_window(Window);  
   return S_SEND_WINDOW;
 }
 
@@ -271,34 +277,63 @@ STATE fill_window(window *Window, file *File)
   return S_SEND_WINDOW;
 }
 
-STATE send_window(sock *Server, window *Window)
+STATE send_window(sock *Server, window *Window, pkt *RecvPkt)
 {
   uint32_t seq = Window->bottom;
+  printf("Send Window :: RR %u\n", Window->rr);
+  printf("Send Window :: Top Sent %u\n", Window->top_sent);
+  if (Window->eof && Window->rr > Window->top_sent)
+    return S_DONE;
+
   for (; seq <= Window->top; seq++)
     {
       if (full_frame(Window, get_frame_num(Window, seq)))
 	{
-	send_frame(Server, Window->Frame[get_frame_num(Window, seq)]);
-	printf("Sent Frame: seq %u\n", seq);
-	if (seq > Window->top_sent)
-	  Window->top_sent = seq;
-	//if (select_call(Server->sock, 0, 0))
-	//  return S_WAIT_ON_RESPONSE;
+	  send_frame(Server, Window->Frame[get_frame_num(Window, seq)]);
+	  printf("Sent Frame: seq %u\n", seq);
+	  if (seq > Window->top_sent)
+	    Window->top_sent = seq;
+	  /* if (select_call(Server->sock, 0, 0)) */
+	  /*   process_pkt(Server, Window, RecvPkt); */
 	}
     }
   return S_WAIT_ON_RESPONSE;
 }
 
-
 STATE wait_on_response(sock *Server, window *Window, pkt *RecvPkt)
 {
   if (select_call(Server->sock, MAX_WINDOW_WAIT_TIME_S, MAX_WINDOW_WAIT_TIME_US))
-    return process_pkt(Server, Window, RecvPkt);
+    recv_pkt(RecvPkt, Server->sock, &(Server->remote), Server->buffsize);
+  printf("Wait - Proceess - Received RecvPkt\n");
+  switch (RecvPkt->Hdr->flag)
+    {
+    case RR:
+      printf("Received an RR\n");
+      if (RecvPkt->Hdr->seq > Window->rr)
+	Window->rr = RecvPkt->Hdr->seq;
+      return S_ADJUST_WINDOW;
+
+    case SREJ:
+      printf("Received a RR\n");
+      if (RecvPkt->Hdr->seq > Window->srej)
+	Window->srej = RecvPkt->Hdr->seq;
+      return S_ADJUST_WINDOW;
+
+    case FILE_NAME:
+      return S_FILE_NAME;
+      break;
+
+    default:
+      print_hdr(RecvPkt);
+      printf("File Transfer -- Unknown Packet\n");
+      return S_FINISH;
+    }
 
   return S_TIMEOUT_ON_RESPONSE;
 }
 
-STATE process_pkt (sock *Server, window *Window, pkt *Pkt)
+
+void process_pkt(sock *Server, window *Window, pkt *Pkt)
 {
   printf("Process Pkt\n");
   recv_pkt(Pkt, Server->sock, &(Server->remote), Server->buffsize);
@@ -309,36 +344,29 @@ STATE process_pkt (sock *Server, window *Window, pkt *Pkt)
       printf("Received an RR\n");
       if (Pkt->Hdr->seq > Window->rr)
 	Window->rr = Pkt->Hdr->seq;
-      return S_ADJUST_WINDOW;
+      //return S_ADJUST_WINDOW;
 
     case SREJ:
       printf("Received a RR\n");
       if (Pkt->Hdr->seq > Window->srej)
 	Window->srej = Pkt->Hdr->seq;
-      return S_ADJUST_WINDOW;
+      //return S_ADJUST_WINDOW;
 
-    case FILE_NAME:
-      return S_FILE_NAME;
-      break;
+    /* case FILE_NAME: */
+    /*   return S_FILE_NAME; */
+    /*   break; */
 
     default:
+      print_hdr(Pkt);
       printf("File Transfer -- Unknown Packet\n");
-      return S_FINISH;
-
+      //return S_FINISH;
     }
 }
 
-//process_pkt RecvPkt
-// if Pkt is RR (boundary checks?)
-//  Window->rr = RR
-// if Pkt is SREJ (currently going with no boundary checks for SREJ)
-//  Window->srej = SREJ
-//  set all packets as not-sent
-// 
-//  call adjust window
 STATE timeout_on_response(window *Window)
 {
   uint32_t seq;
+  printf("Window Num Wait: %u\n", Window->num_wait);
   if (Window->num_wait < MAX_TRIES)
     {
       Window->num_wait += 1;
@@ -428,8 +456,17 @@ void transfer_setup(sock *Server, sock *Old_Server)
 {
   uint32_t len = sizeof(Server->local);
   *Server = *Old_Server;
-  s_getsockname(Server->sock, (struct sockaddr *)&(Server->local), &len);
-  //getsock name stuff
+  Server->sock = s_socket(SOCK_DOMAIN, SOCK_TYPE, DEFAULT_PROTOCOL);
+
+  Server->local.sin_family = SOCK_DOMAIN;
+  Server->local.sin_addr.s_addr = htonl(INADDR_ANY); //???
+  Server->local.sin_port = htons(DEFAULT_PORT);
+
+  s_bind(Server->sock, (struct sockaddr *)&(Server->local), 
+  	 sizeof(Server->local));
+
+  s_getsockname(Server->sock, (struct sockaddr *)&(Server->local), 
+		(socklen_t *)&len);
 }
 
 STATE process_init_syn(sock *Server, file *File, pkt *InitPkt)

@@ -65,8 +65,9 @@ void send_pkt(pkt *Pkt, int socket, struct sockaddr_in dst_addr)
   int dst_addr_len = (int)sizeof(dst_addr);
   if (Pkt != NULL && Pkt->datagram != NULL)
     {
-      print_flag(Pkt->Hdr->flag);
-      printf(" Seq: %u ;;\n", Pkt->Hdr->seq);
+      printf("--Send--\n");
+      print_hdr(Pkt);
+      printf("--------\n");
       sendtoErr(socket, Pkt->datagram, Pkt->datagram_len, flags, 
 		(struct sockaddr *)&dst_addr, dst_addr_len);
 
@@ -81,7 +82,7 @@ int recv_pkt(pkt *Pkt, int socket, struct sockaddr_in *src_addr, uint32_t buffsi
 {
   int flags = 0;
   int src_addr_len = sizeof(*src_addr);
-  uint32_t i;
+  //  uint32_t i;
 
   if (Pkt != NULL && Pkt->datagram != NULL)
     {
@@ -91,10 +92,9 @@ int recv_pkt(pkt *Pkt, int socket, struct sockaddr_in *src_addr, uint32_t buffsi
       if (pkt_checksum(Pkt) == CHECKSUM_GOOD)
 	{
 	  get_hdr(Pkt);
-	  for (i = 0; i < Pkt->data_len; i++)
-	    {
-	      printf("%X ", *(Pkt->data +i));
-	    }
+	  printf("--Recv--\n");
+	  print_hdr(Pkt);
+	  printf("--------\n");
 	  return 1;
 	}
       else
@@ -105,23 +105,22 @@ int recv_pkt(pkt *Pkt, int socket, struct sockaddr_in *src_addr, uint32_t buffsi
 
 void print_flag(uint8_t flag)
 {
-  printf("Flag: ");
   switch (flag)
     {
     case DATA:
-      printf("DATA\n");
+      printf("DATA");
       break;
 
     case DATA_RESENT:
-      printf("DATA_RESENT\n");
+      printf("DATA_RESENT");
       break;
 
     case ACK:
-      printf("ACK\n");
+      printf("ACK");
       break;
 
     case SREJ:
-      printf("SREJ\n");
+      printf("SREJ");
       break;
 
     case RR:
@@ -129,19 +128,19 @@ void print_flag(uint8_t flag)
       break;
 
     case FILE_NAME:
-      printf("FILE_NAME\n");
+      printf("FILE_NAME");
       break;
 
     case FILE_NAME_ACK:
-      printf("FILE_NAME_ACK\n");
+      printf("FILE_NAME_ACK");
       break;
 
     case FILE_EOF:
-      printf("FILE_EOF\n");
+      printf("FILE_EOF");
       break;
 
     case FILE_EOF_ACK:
-      printf("FILE_EOF_ACK\n");
+      printf("FILE_EOF_ACK");
       break;
     }
   fflush(stdout);
@@ -252,10 +251,22 @@ int select_call(int socket, int seconds, int useconds)
 
 void print_hdr(pkt *Pkt)
 {
-  printf("--HDR--\n");
-  printf("Seq: %u\nt", Pkt->Hdr->seq);
+  //  printf("--HDR--\n");
+  printf("Seq: %u\n", Pkt->Hdr->seq);
   printf("Checksum: %u\n", Pkt->Hdr->checksum);
-  printf("Flag: %u\n", (uint32_t)Pkt->Hdr->flag);
+  printf("Flag: %u :: ", (uint32_t)Pkt->Hdr->flag);
+  print_flag(Pkt->Hdr->flag);
+  printf("\n");
+}
+
+void print_window(window *Window)
+{
+  printf("--WINDOW--\n");
+  printf("Top: %u\n", Window->top);
+  printf("Bottom: %u\n", Window->bottom);
+  printf("RR: %u\n", Window->rr);
+  printf("SREJ: %u\n", Window->srej);
+  printf("----------\n");
 }
 
 
@@ -295,8 +306,11 @@ int within_window(window *Window, pkt *Pkt)
 void pkt_fill_frame(window *Window, pkt *Pkt)
 {
   uint32_t frame_num = get_frame_num(Window, Pkt->Hdr->seq);
-  if (frame_num < Window->size && empty_frame(Window, frame_num))
+
+  if (empty_frame(Window, frame_num) && empty_frame(Window, frame_num))
     *(Window->Frame[frame_num]->Pkt) = *Pkt;
+  
+  Window->Frame[frame_num]->state = FRAME_FULL;
 }
 
 

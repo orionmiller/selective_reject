@@ -121,6 +121,7 @@ typedef struct {
 #define FRAME_EMPTY (0)
 #define FRAME_FULL (1)
 #define FRAME_SENT (2)
+#define FRAME_WRITTEN (3)
 //#define FRAME_FULL_RRED (3)
 
 typedef struct {
@@ -253,5 +254,6 @@ uint32_t get_frame_num(window *Window, uint32_t seq);
 window *window_alloc(sock *Conn);
 frame *frame_alloc(sock *Conn);
 void send_frame(sock *Conn, frame *Frame);
+void print_window(window *Window);
 
 #endif
