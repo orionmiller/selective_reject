@@ -41,9 +41,9 @@
 enum State 
   { 
     S_START, S_FINISH, S_DONE,
-    S_FILE_NAME, S_OPEN_FILE, S_GOOD_FILE, S_BAD_FILE, 
+    S_FILE_NAME, S_OPEN_FILE, S_GOOD_FILE, S_BAD_FILE, S_FILE_BEGIN,
     S_FILE_TRANSFER, S_READ_FILE, S_ADJUST_WINDOW, S_SEND_WINDOW, S_TIMEOUT_ON_RESPONSE,
-    S_WAIT_ON_RESPONSE, S_FILE_EOF, S_FILL_WINDOW,
+    S_WAIT_ON_RESPONSE, S_FILE_EOF, S_FILL_WINDOW, 
     S_SEND, S_RECV, S_WAIT_ON_ACK, S_TIMEOUT_ON_ACK 
   };
 
@@ -55,6 +55,8 @@ void process_client(sock Old_Server, pkt InitPkt);
 STATE open_file(file *File);
 STATE good_file(sock *Server, pkt *SendPkt);
 STATE bad_file(sock *Server, pkt *SendPkt, file *File);
+STATE file_begin(sock *Server, pkt *SendPkt, pkt *RecvPkt);
+
 STATE file_name(sock*Server, file *File);
 STATE file_transfer(sock*Server, file *File);
 STATE file_eof(sock *Server);
@@ -63,6 +65,7 @@ STATE wait_on_ack(sock *Server, pkt *RecvPkt);
 STATE timeout_on_ack(int *num_wait);
 STATE create_file_eof(sock *Server, pkt *SendPkt);
 STATE process_init_syn(sock *Server, file *File, pkt *InitPkt);
+STATE wait_on_file_beg(sock *Server, pkt *RecvPkt);
 char *get_filename(pkt *Pkt);
 uint32_t get_buffsize(pkt *Pkt);
 uint32_t get_window_size(pkt *Pkt);

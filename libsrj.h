@@ -71,6 +71,8 @@ typedef struct {
 #define FILE_NAME (6)
 #define FILE_NAME_ACK (7)
 #define FILE_NAME_ERR_ACK (10)
+#define FILE_BEGIN (11)
+#define FILE_BEGIN_ACK (12)
 #define FILE_EOF (8)
 #define FILE_EOF_ACK (9)
 
@@ -200,6 +202,8 @@ int recv_pkt(pkt *Pkt, int socket, struct sockaddr_in *src_addr, uint32_t buffsi
 //
 void get_pkt(pkt *Pkt);
 
+void pkt_to_nowhere(void);
+
 
 // -- [ Checksum ]
 //
@@ -211,7 +215,9 @@ int init_pkt(pkt *Pkt);
 
 int data_pkt(pkt *Pkt);
 
+int file_begin_pkt(pkt *Pkt);
 
+int file_begin_ack_pkt(pkt *Pkt);
 
 // - [ Header ]
 
@@ -255,5 +261,6 @@ window *window_alloc(sock *Conn);
 frame *frame_alloc(sock *Conn);
 void send_frame(sock *Conn, frame *Frame);
 void print_window(window *Window);
+void print_frame_state(frame *Frame);
 
 #endif

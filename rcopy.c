@@ -9,7 +9,7 @@ int main(int argc, char *argv[])
 {
   sock *Client;
   arg *Arg = s_malloc(sizeof(arg));
-
+  pkt_to_nowhere();
   process_arguments(Arg, argc, argv);
   Client = client_sock(Arg->remote_machine, Arg->remote_port, Arg->buffsize, Arg->window_size);
   sendtoErr_setup(Arg->error_rate);
@@ -26,7 +26,7 @@ void process_server(sock *Client, arg *Arg)
 
   LocalFile->name = Arg->local_file;
   RemoteFile->name = Arg->remote_file;
-
+ 
   while (state != S_FINISH) {
     switch (state) {
       
@@ -56,8 +56,11 @@ void process_server(sock *Client, arg *Arg)
       break;
     }
   }
-  fflush(LocalFile->fp);
-  fclose(LocalFile->fp);
+  if (LocalFile->fp)
+    {
+      fflush(LocalFile->fp);
+      fclose(LocalFile->fp);
+    }
   free(LocalFile);
   free(RemoteFile);
 }
@@ -121,7 +124,8 @@ STATE file_transfer(sock *Client, file *File)
 
 STATE send_srej(sock *Client, window *Window, pkt *Pkt)
 {
-  create_pkt(Pkt, SREJ, Window->rr, NULL, 0);
+  Window->srej = Window->rr;
+  create_pkt(Pkt, SREJ, Window->srej, NULL, 0);
   send_pkt(Pkt, Client->sock, Client->remote);
   return S_WAIT_ON_DATA; //maybe s_write_data
 }
@@ -141,26 +145,28 @@ STATE wait_on_data(sock *Client, window *Window, pkt *RecvPkt)
   printf ("Select Call\n");
   while (select_call(Client->sock, MAX_WINDOW_WAIT_TIME_S, MAX_WINDOW_WAIT_TIME_US))
     {
-      recv_pkt(RecvPkt, Client->sock, &(Client->remote), Client->buffsize);
-      if (eof_pkt(RecvPkt))
+      if (recv_pkt(RecvPkt, Client->sock, &(Client->remote), Client->buffsize))
 	{
-	  Client->seq = RecvPkt->Hdr->seq;
-	  return S_DONE;
-	}
-
-      if (data_pkt(RecvPkt) && RecvPkt->Hdr->seq < Window->rr)
-	return S_SEND_RR;
-
-      if (within_window(Window, RecvPkt) && data_pkt(RecvPkt))
-	{
-	  pkt_fill_frame(Window, RecvPkt);
-	  if (RecvPkt->Hdr->seq == Window->rr)
+	  if (eof_pkt(RecvPkt))
 	    {
-	      Window->rr += 1;
-	      return S_SEND_RR;
+	      Client->seq = RecvPkt->Hdr->seq;
+	      return S_DONE;
 	    }
+	  
+	  if (data_pkt(RecvPkt) && RecvPkt->Hdr->seq < Window->rr)
+	    return S_SEND_RR;
+	  
+	  if (within_window(Window, RecvPkt) && data_pkt(RecvPkt))
+	    {
+	      pkt_fill_frame(Window, RecvPkt);
+	      if (RecvPkt->Hdr->seq == Window->rr)
+		{
+		  Window->rr += 1;
+		  return S_SEND_RR;
+		}
 	  if (RecvPkt->Hdr->seq > Window->rr)
 	    return S_SEND_SREJ;
+	    }
 	}
     }
 
@@ -210,9 +216,15 @@ void write_frame(window *Window, file *File, uint32_t seq)
 
 STATE send_init_pkt(sock *Client, file *File)
 {
+  static int bool = 1;
   pkt *SendPkt = pkt_alloc(Client->buffsize);
   create_init_pkt(Client, SendPkt, File);
   send_pkt(SendPkt, Client->sock, Client->remote);
+  if (bool)
+    {
+      send_pkt(SendPkt, Client->sock, Client->remote);
+      bool = 0;
+    }
   free(SendPkt);
   return S_FILE_NAME;
 }
@@ -285,6 +297,7 @@ STATE file_name(sock *Client, file *LocalFile, file *RemoteFile)
 {
   STATE state = S_WAIT_ON_ACK;
   pkt *RecvPkt = pkt_alloc(Client->buffsize);
+  pkt *SendPkt = pkt_alloc(Client->buffsize);
 
   while (state != S_DONE) 
     {
@@ -315,6 +328,11 @@ STATE file_name(sock *Client, file *LocalFile, file *RemoteFile)
 	  return timeout_on_ack(Client);
 	  break;
 
+	case S_FILE_BEGIN:
+	  printf("File Begin\n");
+	  state = file_begin(Client, SendPkt, RecvPkt);
+	  break;
+
 	case S_FINISH:
 	  printf("Finish\n");
 	  return S_FINISH;
@@ -325,18 +343,42 @@ STATE file_name(sock *Client, file *LocalFile, file *RemoteFile)
 	}
     }
   free(RecvPkt);
+  free(SendPkt);
   return S_FILE_TRANSFER;  
 }
 
+STATE file_begin(sock *Client, pkt *SendPkt, pkt *RecvPkt)
+{
+  uint32_t num_wait = 0;
+  while (num_wait < MAX_TRIES)
+    {
+      create_pkt(SendPkt, FILE_BEGIN, Client->seq, NULL, 0);
+      send_pkt(SendPkt, Client->sock, Client->remote);
+      if (select_call(Client->sock, MAX_SEND_WAIT_TIME_S, MAX_SEND_WAIT_TIME_US))
+	{
+	  if(recv_pkt(RecvPkt, Client->sock, &(Client->remote), Client->buffsize))
+	    {
+	      if (RecvPkt->Hdr->seq == Client->seq && file_begin_ack_pkt(RecvPkt))
+		return S_DONE;
+	    }
+	}
+      else
+	num_wait += 1;
+    }
+
+  return S_FINISH;
+}
 
 STATE wait_on_ack(sock *Client, pkt *Pkt)
 {
   while (select_call(Client->sock, MAX_SEND_WAIT_TIME_S, MAX_SEND_WAIT_TIME_US))
     {
-      recv_pkt(Pkt, Client->sock, &(Client->remote), Client->buffsize);
-      if (Pkt->Hdr->seq == Client->seq)
+      if(recv_pkt(Pkt, Client->sock, &(Client->remote), Client->buffsize))
 	{
-	  return S_OPEN_FILE;
+	  if (Pkt->Hdr->seq == Client->seq && Pkt->Hdr->flag == FILE_NAME_ACK)
+	    {
+	      return S_OPEN_FILE;
+	    }
 	}
     }
   return S_TIMEOUT_ON_ACK;
@@ -394,7 +436,7 @@ STATE good_file(file *File)
 	  perror("Opening Local File");
 	  exit(EXIT_FAILURE);
 	}
-      return S_DONE;
+      return S_FILE_BEGIN;
     }
   return S_FINISH;
 }

@@ -142,6 +142,14 @@ void print_flag(uint8_t flag)
     case FILE_EOF_ACK:
       printf("FILE_EOF_ACK");
       break;
+
+    case FILE_BEGIN:
+      printf("FILE_BEGIN");
+      break;
+
+    case FILE_BEGIN_ACK:
+      printf("FILE_BEGIN_ACK\n");
+      break;
     }
   fflush(stdout);
 }
@@ -216,7 +224,7 @@ uint16_t pkt_checksum(pkt *Pkt)
 
 void sendtoErr_setup(double error_rate)
 {
-  sendtoErr_init(error_rate, DROP_ON, FLIP_ON, DEBUG_ON, RSEED_ON);
+  sendtoErr_init(error_rate, DROP_ON, FLIP_ON, DEBUG_ON, RSEED_OFF);
 }
 
 
@@ -239,13 +247,21 @@ int select_call(int socket, int seconds, int useconds)
   timeout.tv_usec = useconds;
   FD_ZERO(&fdvar);
   FD_SET(socket, &fdvar);
-  select_out = selectMod(socket+1, (fd_set *)&fdvar, (fd_set *)0, (fd_set *)0, &timeout);
-  if (select_out == -1) //magic num
+  select_out = select(socket+1, (fd_set *)&fdvar, (fd_set *)0, (fd_set *)0, &timeout);
+  //was select mod
+
+  if (FD_ISSET(socket, &fdvar))
+    {
+      return 1;
+    }
+
+  else if (select_out < 0) //magic num
     {
       perror("selectMod");
       exit(EXIT_FAILURE);
     }
-  return select_out;//(FD_ISSET(socket, &fdvar));
+  else
+    return 0;
 }
 
 
@@ -261,18 +277,84 @@ void print_hdr(pkt *Pkt)
 
 void print_window(window *Window)
 {
+  uint32_t i;
   printf("--WINDOW--\n");
   printf("Top: %u\n", Window->top);
   printf("Bottom: %u\n", Window->bottom);
   printf("RR: %u\n", Window->rr);
   printf("SREJ: %u\n", Window->srej);
+  printf("Top Sent: %u\n", Window->top_sent);
+  for (i = 0; i < Window->size; i++)
+    {
+      printf("Frame[%u] Seq %u:", i, Window->Frame[i]->Pkt->Hdr->seq);
+      print_frame_state(Window->Frame[i]);
+      printf("\n");
+    }
   printf("----------\n");
+}
+
+void print_frame_state(frame *Frame)
+{
+  switch (Frame->state)
+    {
+    case FRAME_EMPTY:
+      printf("Frame Empty");
+      break;
+
+    case FRAME_FULL:
+      printf("Frame Full");
+      break;
+
+    case FRAME_SENT:
+      printf("Frame Sent");
+      break;
+
+    case FRAME_WRITTEN:
+      printf("Frame Writen");
+      break;
+    }
+}
+
+void pkt_to_nowhere(void)
+{
+  sock *Conn = s_malloc(sizeof(sock));
+  pkt *Pkt = pkt_alloc(500);
+  uint32_t len = sizeof(Conn->local);
+  Conn->sock = s_socket(SOCK_DOMAIN, SOCK_TYPE, DEFAULT_PROTOCOL);
+  Conn->local.sin_family = SOCK_DOMAIN;
+  Conn->local.sin_addr.s_addr = htonl(INADDR_ANY); //???
+  Conn->local.sin_port = htons(DEFAULT_PORT);
+  s_bind(Conn->sock, (struct sockaddr *)&(Conn->local), 
+  	 sizeof(Conn->local));
+  s_getsockname(Conn->sock, (struct sockaddr *)&(Conn->local), 
+		(socklen_t *)&len);
+  
+  create_pkt(Pkt, 0, 0, NULL, 0);
+  send_pkt(Pkt, Conn->sock, Conn->local);
+  shutdown(Conn->sock, SHUT_RDWR);
+  free(Conn);
 }
 
 
 int eof_pkt(pkt *Pkt)
 {
   if (Pkt->Hdr->flag == FILE_EOF)
+    return TRUE;
+  
+  return FALSE;
+}
+
+int file_begin_pkt(pkt *Pkt)
+{
+  if (Pkt->Hdr->flag == FILE_BEGIN)
+    return TRUE;
+
+  return FALSE;
+}
+
+int file_begin_ack_pkt(pkt *Pkt)
+{
+  if (Pkt->Hdr->flag == FILE_BEGIN_ACK)
     return TRUE;
   
   return FALSE;
@@ -387,6 +469,10 @@ void set_frame_empty(window *Window, uint32_t frame_num)
   Window->Frame[frame_num]->state = FRAME_EMPTY;
 }
 
+void set_frame_sent(window *Window, uint32_t frame_num)
+{
+  Window->Frame[frame_num]->state = FRAME_SENT;
+}
 void set_frame_full(window *Window, uint32_t seq)
 {
   uint32_t frame_num = get_frame_num(Window, seq);

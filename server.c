@@ -9,12 +9,13 @@
 #include "util.h"
 
 #include "server.h"
+#include <time.h>
 
 int main(int argc, char *argv[])
 {
-  pid_t pid;
+  //  pid_t pid;
   double error_rate;
-  int status;
+  //int status;
   pkt *RecvPkt = pkt_alloc(MAX_BUFF_SIZE);
   sock *Server = server_sock(MAX_BUFF_SIZE);
 
@@ -29,17 +30,17 @@ int main(int argc, char *argv[])
 	  if (init_pkt(RecvPkt))
 	    {
 	      printf("Received Init Packet\n");
-	      pid = s_fork();
+	      //pid = s_fork();
      
-	      if (pid == CHILD)
-		{
-		  printf("Begin Processing of Client\n");
-		  process_client(*Server, *RecvPkt);
-		  exit(EXIT_SUCCESS);
-		}
+	      //if (pid == CHILD)
+	      //{
+	      printf("Begin Processing of Client\n");
+	      process_client(*Server, *RecvPkt);
+	      //exit(EXIT_SUCCESS);
+	      //}
 	         
-	      printf("Wait for Children\n");
-	      wait_for_children(&status);
+	      //printf("Wait for Children\n");
+	      //wait_for_children(&status);
 	    }
 	}
     }
@@ -114,6 +115,7 @@ STATE file_name(sock*Server, file *File)
 {
   STATE state = S_OPEN_FILE;
   pkt *SendPkt = pkt_alloc(Server->buffsize);
+  pkt *RecvPkt = pkt_alloc(Server->buffsize);
 
   while (state != S_DONE) 
     {
@@ -136,9 +138,18 @@ STATE file_name(sock*Server, file *File)
 
 	case S_SEND:
 	  printf("Send\n");
-	  state = S_DONE;
+	  state = S_FILE_BEGIN;
 	  send_pkt(SendPkt, Server->sock, Server->remote);
 	  break;
+
+	case S_FILE_BEGIN:
+	  printf("File Begin\n");
+	  state = file_begin(Server, SendPkt, RecvPkt);
+	  break;
+
+	case S_FINISH:
+	  printf("S_FINISH\n");
+	  return S_FINISH;
 
 	default:
 	  printf("File Name - Unkown Case\n");
@@ -146,6 +157,7 @@ STATE file_name(sock*Server, file *File)
 	}
     }
   free(SendPkt);
+  free(RecvPkt);
   return S_FILE_TRANSFER;  
 }
 
@@ -199,6 +211,8 @@ STATE file_transfer(sock*Server, file *File)
 	{
 	case S_ADJUST_WINDOW:
 	  printf("Adjust Window\n");
+	  printf("Before Adjust\n");
+	  print_window(Window);  
 	  state = adjust_window(Window);
 	  break;
 
@@ -209,7 +223,11 @@ STATE file_transfer(sock*Server, file *File)
 	  
 	case S_SEND_WINDOW:
 	  printf("Send Window\n");
+	  printf("Before Send\n");
+	  print_window(Window);  
 	  state = send_window(Server, Window, RecvPkt);
+	  printf("After Sent\n");
+	  print_window(Window);  
 	  break;
 
 	case S_WAIT_ON_RESPONSE:
@@ -243,6 +261,7 @@ STATE adjust_window(window *Window)
   if (Window->eof && Window->rr > Window->top_sent)
     return S_DONE;
 
+
   if (Window->rr > Window->bottom || Window->srej > Window->bottom)
     {
       seq = (Window->rr > Window->srej) ? (Window->rr -1) : (Window->srej -1);
@@ -256,7 +275,7 @@ STATE adjust_window(window *Window)
       print_window(Window);
       return S_FILL_WINDOW;
     }
-  print_window(Window);  
+
   return S_SEND_WINDOW;
 }
 
@@ -279,11 +298,33 @@ STATE fill_window(window *Window, file *File)
 
 STATE send_window(sock *Server, window *Window, pkt *RecvPkt)
 {
+  //  static uint32_t bool = 1;
   uint32_t seq = Window->bottom;
-  printf("Send Window :: RR %u\n", Window->rr);
-  printf("Send Window :: Top Sent %u\n", Window->top_sent);
+  //  frame *Frame;
   if (Window->eof && Window->rr > Window->top_sent)
     return S_DONE;
+
+  //  if (bool)
+  //    {
+    /*   printf("Dropping Window\n"); */
+    /*   for (; seq <= Window->top; seq++) */
+    /* 	{ */
+    /* 	  if (full_frame(Window, get_frame_num(Window, seq))) */
+    /* 	    { */
+    /* 	      Frame = Window->Frame[get_frame_num(Window, seq)]; */
+    /* 	      //Frame->Pkt->data[3] = 0; */
+    /* 	      //send_pkt(Frame->Pkt, Conn->sock, Conn->remote); */
+    /* 	      Frame->state = FRAME_SENT; */
+    /* 	      printf("Sent Frame: seq %u\n", seq); */
+    /* 	      if (seq > Window->top_sent) */
+    /* 		Window->top_sent = seq; */
+    /* 	      /\* if (select_call(Server->sock, 0, 0)) *\/ */
+    /* 	      /\*   process_pkt(Server, Window, RecvPkt); *\/ */
+    /* 	    } */
+    /* 	} */
+    /*   bool = 0; */
+    /*   return S_WAIT_ON_RESPONSE; */
+    /* } */
 
   for (; seq <= Window->top; seq++)
     {
@@ -303,31 +344,35 @@ STATE send_window(sock *Server, window *Window, pkt *RecvPkt)
 STATE wait_on_response(sock *Server, window *Window, pkt *RecvPkt)
 {
   if (select_call(Server->sock, MAX_WINDOW_WAIT_TIME_S, MAX_WINDOW_WAIT_TIME_US))
-    recv_pkt(RecvPkt, Server->sock, &(Server->remote), Server->buffsize);
-  printf("Wait - Proceess - Received RecvPkt\n");
-  switch (RecvPkt->Hdr->flag)
-    {
-    case RR:
-      printf("Received an RR\n");
-      if (RecvPkt->Hdr->seq > Window->rr)
-	Window->rr = RecvPkt->Hdr->seq;
-      return S_ADJUST_WINDOW;
-
-    case SREJ:
-      printf("Received a RR\n");
-      if (RecvPkt->Hdr->seq > Window->srej)
-	Window->srej = RecvPkt->Hdr->seq;
-      return S_ADJUST_WINDOW;
-
-    case FILE_NAME:
-      return S_FILE_NAME;
-      break;
-
-    default:
-      print_hdr(RecvPkt);
-      printf("File Transfer -- Unknown Packet\n");
-      return S_FINISH;
-    }
+    if (recv_pkt(RecvPkt, Server->sock, &(Server->remote), Server->buffsize))
+      {
+	Window->num_wait = 0;
+	printf("Wait - Proccess - Received RecvPkt\n");
+	switch (RecvPkt->Hdr->flag)
+	  {
+	  case RR:
+	    printf("Received an RR\n");
+	    if (RecvPkt->Hdr->seq > Window->rr)
+	      Window->rr = RecvPkt->Hdr->seq;
+	    return S_ADJUST_WINDOW;
+	    
+	  case SREJ:
+	    printf("Received a RR\n");
+	    if (RecvPkt->Hdr->seq > Window->srej)
+	      Window->srej = RecvPkt->Hdr->seq;
+	    return S_ADJUST_WINDOW;
+	    
+	  case FILE_NAME:
+	    return S_FILE_NAME;
+	    break;
+	    
+	  default:
+	    print_hdr(RecvPkt);
+	    printf("File Transfer -- Unknown Packet\n");
+	    //return S_ADJUST_WINDOW;
+	    return S_FINISH;
+	  }
+      }
 
   return S_TIMEOUT_ON_RESPONSE;
 }
@@ -336,30 +381,33 @@ STATE wait_on_response(sock *Server, window *Window, pkt *RecvPkt)
 void process_pkt(sock *Server, window *Window, pkt *Pkt)
 {
   printf("Process Pkt\n");
-  recv_pkt(Pkt, Server->sock, &(Server->remote), Server->buffsize);
-  printf("Received Pkt\n");
-  switch (Pkt->Hdr->flag)
+
+  if(recv_pkt(Pkt, Server->sock, &(Server->remote), Server->buffsize))
     {
-    case RR:
-      printf("Received an RR\n");
-      if (Pkt->Hdr->seq > Window->rr)
-	Window->rr = Pkt->Hdr->seq;
-      //return S_ADJUST_WINDOW;
-
-    case SREJ:
-      printf("Received a RR\n");
-      if (Pkt->Hdr->seq > Window->srej)
-	Window->srej = Pkt->Hdr->seq;
-      //return S_ADJUST_WINDOW;
-
-    /* case FILE_NAME: */
-    /*   return S_FILE_NAME; */
-    /*   break; */
-
-    default:
-      print_hdr(Pkt);
-      printf("File Transfer -- Unknown Packet\n");
-      //return S_FINISH;
+      printf("Received Pkt\n");
+      switch (Pkt->Hdr->flag)
+	{
+	case RR:
+	  printf("Received an RR\n");
+	  if (Pkt->Hdr->seq > Window->rr)
+	    Window->rr = Pkt->Hdr->seq;
+	  //return S_ADJUST_WINDOW;
+	  
+	case SREJ:
+	  printf("Received a RR\n");
+	  if (Pkt->Hdr->seq > Window->srej)
+	    Window->srej = Pkt->Hdr->seq;
+	  //return S_ADJUST_WINDOW;
+	  
+	  /* case FILE_NAME: */
+	  /*   return S_FILE_NAME; */
+	  /*   break; */
+	  
+	default:
+	  print_hdr(Pkt);
+	  printf("File Transfer -- Unknown Packet\n");
+	  //return S_FINISH;
+	}
     }
 }
 
@@ -438,16 +486,37 @@ STATE timeout_on_ack(int *num_wait)
   *num_wait += 1;
   return S_SEND;
 }
+	  
+STATE file_begin(sock *Server, pkt *SendPkt, pkt *RecvPkt)
+{
+  printf("File Begin Before Select Call\n");
+  while (select_call(Server->sock, MAX_RECV_WAIT_TIME_S, MAX_RECV_WAIT_TIME_US))
+    {
+      if(recv_pkt(RecvPkt, Server->sock, &(Server->remote), Server->buffsize))
+	{
+	  if (RecvPkt->Hdr->seq == Server->seq && file_begin_pkt(RecvPkt))
+	    {
+	      create_pkt(SendPkt, FILE_BEGIN_ACK, Server->seq, NULL, 0);
+	      send_pkt(SendPkt, Server->sock, Server->remote);
+	      printf("S_DONE for file begin\n");
+	      return S_DONE;
+	    }
+	  if (init_pkt(RecvPkt))
+	    return S_OPEN_FILE;
+	}
+    }
+  printf("Select Call Failed\n");
+  return S_FINISH;
+}
 
 STATE wait_on_ack(sock *Server, pkt *RecvPkt)
 {
   while (select_call(Server->sock, MAX_TRY_WAIT_TIME_S, MAX_TRY_WAIT_TIME_US))
     {
-      recv_pkt(RecvPkt, Server->sock, &(Server->remote), Server->buffsize);
-      if (RecvPkt->Hdr->seq == Server->seq)
-	{
-	  return S_DONE;
-	}
+      if(recv_pkt(RecvPkt, Server->sock, &(Server->remote), Server->buffsize))
+	if (RecvPkt->Hdr->seq == Server->seq)
+	    return S_DONE;
+      
     }
   return S_TIMEOUT_ON_ACK;
 }
