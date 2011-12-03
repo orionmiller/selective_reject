@@ -65,9 +65,9 @@ void send_pkt(pkt *Pkt, int socket, struct sockaddr_in dst_addr)
   int dst_addr_len = (int)sizeof(dst_addr);
   if (Pkt != NULL && Pkt->datagram != NULL)
     {
-      printf("--Send--\n");
-      print_hdr(Pkt);
-      printf("--------\n");
+      //      printf("--Send--\n");
+      //      print_hdr(Pkt);
+      //      printf("--------\n");
       sendtoErr(socket, Pkt->datagram, Pkt->datagram_len, flags, 
 		(struct sockaddr *)&dst_addr, dst_addr_len);
 
@@ -92,9 +92,9 @@ int recv_pkt(pkt *Pkt, int socket, struct sockaddr_in *src_addr, uint32_t buffsi
       if (pkt_checksum(Pkt) == CHECKSUM_GOOD)
 	{
 	  get_hdr(Pkt);
-	  printf("--Recv--\n");
-	  print_hdr(Pkt);
-	  printf("--------\n");
+	  //	  printf("--Recv--\n");
+	  //	  print_hdr(Pkt);
+	  //	  printf("--------\n");
 	  return 1;
 	}
       else
@@ -284,6 +284,7 @@ void print_window(window *Window)
   printf("RR: %u\n", Window->rr);
   printf("SREJ: %u\n", Window->srej);
   printf("Top Sent: %u\n", Window->top_sent);
+  printf("EOF: %u\n", Window->eof);
   for (i = 0; i < Window->size; i++)
     {
       printf("Frame[%u] Seq %u:", i, Window->Frame[i]->Pkt->Hdr->seq);
@@ -514,8 +515,10 @@ void free_pkt(pkt *Pkt)
 {
   if(Pkt)
     {
-      free(Pkt->Hdr);
-      free(Pkt->data);
+      //      if (Pkt->Hdr)
+      //	free(Pkt->Hdr);
+      //      if (Pkt->datagram)
+      //	free(Pkt->datagram);
       free(Pkt);
     }
 }

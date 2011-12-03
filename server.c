@@ -214,7 +214,7 @@ STATE file_transfer(sock*Server, file *File)
 	case S_ADJUST_WINDOW:
 	  printf("Adjust Window\n");
 	  printf("Before Adjust\n");
-	  print_window(Window);  
+	  //print_window(Window);  
 	  state = adjust_window(Window);
 	  break;
 
@@ -226,10 +226,10 @@ STATE file_transfer(sock*Server, file *File)
 	case S_SEND_WINDOW:
 	  printf("Send Window\n");
 	  printf("Before Send\n");
-	  print_window(Window);  
+	  //print_window(Window);  
 	  state = send_window(Server, Window, RecvPkt);
 	  printf("After Sent\n");
-	  print_window(Window);  
+	  //print_window(Window);  
 	  break;
 
 	case S_WAIT_ON_RESPONSE:
@@ -262,6 +262,8 @@ STATE adjust_window(window *Window)
 {
   //make sure funciton can break out if eof and RR is above highest sent pkt
   uint32_t seq;
+
+  print_window(Window);
   if (Window->eof && Window->rr > Window->top_sent)
     return S_DONE;
 
@@ -276,7 +278,7 @@ STATE adjust_window(window *Window)
       Window->bottom = (Window->rr > Window->srej) ? (Window->rr) : (Window->srej);
       Window->top = Window->bottom + Window->size - 1;
       
-      print_window(Window);
+      //      print_window(Window);
       return S_FILL_WINDOW;
     }
 
@@ -287,15 +289,16 @@ STATE fill_window(window *Window, file *File)
 {
   uint32_t seq = Window->bottom;
 
-  if (Window->eof)
-    return S_SEND_WINDOW;
+  //  if (Window->eof)
+  //    return S_SEND_WINDOW;
   
-  for (; seq <= Window->top; seq++)
-    if (empty_frame(Window, get_frame_num(Window, seq)))
-      break;
+  //  for (; seq <= Window->top; seq++)
+  //    if (empty_frame(Window, get_frame_num(Window, seq)))
+      //      break;
   printf("Fill Seq Start: %u\n", seq);
-  for (; Window->eof == FALSE && seq <= Window->top; seq++)
-    file_fill_frame(Window, File, seq);
+  for (; seq <= Window->top; seq++) //Window->eof == FALSE && 
+    if (empty_frame(Window, get_frame_num(Window, seq)))
+      file_fill_frame(Window, File, seq);
 
   return S_SEND_WINDOW;
 }
@@ -303,8 +306,8 @@ STATE fill_window(window *Window, file *File)
 STATE send_window(sock *Server, window *Window, pkt *RecvPkt)
 {
   uint32_t seq = Window->bottom;
-  if (Window->eof && Window->rr > Window->top_sent)
-    return S_DONE;
+  //  if (Window->eof && Window->rr > Window->top_sent)
+  //    return S_DONE;
 
   for (; seq <= Window->top; seq++)
     {

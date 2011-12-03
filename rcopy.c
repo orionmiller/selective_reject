@@ -189,7 +189,7 @@ STATE adjust_window(window *Window)
       Window->bottom = (Window->rr > Window->srej) ? (Window->rr) : (Window->srej);
       Window->top = Window->bottom + Window->size - 1;
     }
-  print_window(Window);
+  //print_window(Window);
   return S_WAIT_ON_DATA;
 }
 
@@ -197,8 +197,9 @@ STATE write_data(window *Window, file *File)
 {
   uint32_t seq;
   uint32_t rtop = (Window->rr > Window->srej) ? (Window->rr) : (Window->srej);
-  
-  for (seq = Window->bottom; seq < Window->top && seq < rtop; seq ++)
+  printf("--Write Data--");
+  print_window(Window);
+  for (seq = Window->bottom; seq <= Window->top && seq < rtop; seq ++) //chang
     write_frame(Window, File, seq);
 
   fflush(File->fp);
@@ -218,15 +219,9 @@ void write_frame(window *Window, file *File, uint32_t seq)
 
 STATE send_init_pkt(sock *Client, file *File)
 {
-  static int bool = 1;
   pkt *SendPkt = pkt_alloc(Client->buffsize);
   create_init_pkt(Client, SendPkt, File);
   send_pkt(SendPkt, Client->sock, Client->remote);
-  if (bool)
-    {
-      send_pkt(SendPkt, Client->sock, Client->remote);
-      bool = 0;
-    }
   free_pkt(SendPkt);
   return S_FILE_NAME;
 }
