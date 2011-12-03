@@ -13,9 +13,9 @@
 
 int main(int argc, char *argv[])
 {
-  //  pid_t pid;
+  pid_t pid;
   double error_rate;
-  //int status;
+  int status;
   pkt *RecvPkt = pkt_alloc(MAX_BUFF_SIZE);
   sock *Server = server_sock(MAX_BUFF_SIZE);
 
@@ -23,27 +23,27 @@ int main(int argc, char *argv[])
   process_arguments(&error_rate, argc, argv);
   sendtoErr_setup(error_rate);
 
-  //  while (TRUE)
-  //    {
+  while (TRUE)
+    {
       if(recv_pkt(RecvPkt, Server->sock, &(Server->remote), Server->buffsize))
 	{
 	  if (init_pkt(RecvPkt))
 	    {
 	      printf("Received Init Packet\n");
-	      //pid = s_fork();
+	      pid = s_fork();
      
-	      //if (pid == CHILD)
-	      //{
+	      if (pid == CHILD)
+	      {
 	      printf("Begin Processing of Client\n");
 	      process_client(*Server, *RecvPkt);
-	      //exit(EXIT_SUCCESS);
-	      //}
+	      exit(EXIT_SUCCESS);
+	      }
 	         
-	      //printf("Wait for Children\n");
-	      //wait_for_children(&status);
+	      printf("Wait for Children\n");
+	      wait_for_children(&status);
 	    }
 	}
-      //    }
+    }
       free_pkt(RecvPkt);
       free(Server);
 
@@ -278,7 +278,6 @@ STATE adjust_window(window *Window)
       Window->bottom = (Window->rr > Window->srej) ? (Window->rr) : (Window->srej);
       Window->top = Window->bottom + Window->size - 1;
       
-      //      print_window(Window);
       return S_FILL_WINDOW;
     }
 
@@ -289,14 +288,8 @@ STATE fill_window(window *Window, file *File)
 {
   uint32_t seq = Window->bottom;
 
-  //  if (Window->eof)
-  //    return S_SEND_WINDOW;
-  
-  //  for (; seq <= Window->top; seq++)
-  //    if (empty_frame(Window, get_frame_num(Window, seq)))
-      //      break;
   printf("Fill Seq Start: %u\n", seq);
-  for (; seq <= Window->top; seq++) //Window->eof == FALSE && 
+  for (; seq <= Window->top; seq++)
     if (empty_frame(Window, get_frame_num(Window, seq)))
       file_fill_frame(Window, File, seq);
 
@@ -306,8 +299,6 @@ STATE fill_window(window *Window, file *File)
 STATE send_window(sock *Server, window *Window, pkt *RecvPkt)
 {
   uint32_t seq = Window->bottom;
-  //  if (Window->eof && Window->rr > Window->top_sent)
-  //    return S_DONE;
 
   for (; seq <= Window->top; seq++)
     {
@@ -317,8 +308,6 @@ STATE send_window(sock *Server, window *Window, pkt *RecvPkt)
 	  printf("Sent Frame: seq %u\n", seq);
 	  if (seq > Window->top_sent)
 	    Window->top_sent = seq;
-	  /* if (select_call(Server->sock, 0, 0)) */
-	  /*   process_pkt(Server, Window, RecvPkt); */
 	}
     }
   return S_WAIT_ON_RESPONSE;
