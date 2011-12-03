@@ -14,6 +14,8 @@ int main(int argc, char *argv[])
   Client = client_sock(Arg->remote_machine, Arg->remote_port, Arg->buffsize, Arg->window_size);
   sendtoErr_setup(Arg->error_rate);
   process_server(Client, Arg);
+  free(Client);
+  free(Arg);
   return EXIT_SUCCESS;
 }
 
@@ -116,9 +118,9 @@ STATE file_transfer(sock *Client, file *File)
 	}
     }
 
-  free(Window);
-  free(RecvPkt);
-  free(SendPkt);
+  free_window(Window);
+  free_pkt(RecvPkt);
+  free_pkt(SendPkt);
   return S_FILE_EOF;  
 }
 
@@ -225,7 +227,7 @@ STATE send_init_pkt(sock *Client, file *File)
       send_pkt(SendPkt, Client->sock, Client->remote);
       bool = 0;
     }
-  free(SendPkt);
+  free_pkt(SendPkt);
   return S_FILE_NAME;
 }
 
@@ -342,8 +344,8 @@ STATE file_name(sock *Client, file *LocalFile, file *RemoteFile)
 	  return S_FINISH;
 	}
     }
-  free(RecvPkt);
-  free(SendPkt);
+  free_pkt(RecvPkt);
+  free_pkt(SendPkt);
   return S_FILE_TRANSFER;  
 }
 
@@ -477,3 +479,4 @@ void process_arguments(arg *Arg, int argc, char *argv[])
   printf("Remote Port: %d\n", Arg->remote_port);
   printf("Processed Args\n");
 }
+

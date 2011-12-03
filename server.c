@@ -23,8 +23,8 @@ int main(int argc, char *argv[])
   process_arguments(&error_rate, argc, argv);
   sendtoErr_setup(error_rate);
 
-  while (TRUE)
-    {
+  //  while (TRUE)
+  //    {
       if(recv_pkt(RecvPkt, Server->sock, &(Server->remote), Server->buffsize))
 	{
 	  if (init_pkt(RecvPkt))
@@ -43,7 +43,9 @@ int main(int argc, char *argv[])
 	      //wait_for_children(&status);
 	    }
 	}
-    }
+      //    }
+      free_pkt(RecvPkt);
+      free(Server);
 
   return EXIT_SUCCESS;
 }
@@ -156,8 +158,8 @@ STATE file_name(sock*Server, file *File)
 	  return S_FINISH;
 	}
     }
-  free(SendPkt);
-  free(RecvPkt);
+  free_pkt(SendPkt);
+  free_pkt(RecvPkt);
   return S_FILE_TRANSFER;  
 }
 
@@ -251,6 +253,8 @@ STATE file_transfer(sock*Server, file *File)
 	  return S_FINISH;
 	}
     }
+  free_pkt(RecvPkt);
+  free_window(Window);
   return S_FILE_EOF;  
 }
 
@@ -298,33 +302,9 @@ STATE fill_window(window *Window, file *File)
 
 STATE send_window(sock *Server, window *Window, pkt *RecvPkt)
 {
-  //  static uint32_t bool = 1;
   uint32_t seq = Window->bottom;
-  //  frame *Frame;
   if (Window->eof && Window->rr > Window->top_sent)
     return S_DONE;
-
-  //  if (bool)
-  //    {
-    /*   printf("Dropping Window\n"); */
-    /*   for (; seq <= Window->top; seq++) */
-    /* 	{ */
-    /* 	  if (full_frame(Window, get_frame_num(Window, seq))) */
-    /* 	    { */
-    /* 	      Frame = Window->Frame[get_frame_num(Window, seq)]; */
-    /* 	      //Frame->Pkt->data[3] = 0; */
-    /* 	      //send_pkt(Frame->Pkt, Conn->sock, Conn->remote); */
-    /* 	      Frame->state = FRAME_SENT; */
-    /* 	      printf("Sent Frame: seq %u\n", seq); */
-    /* 	      if (seq > Window->top_sent) */
-    /* 		Window->top_sent = seq; */
-    /* 	      /\* if (select_call(Server->sock, 0, 0)) *\/ */
-    /* 	      /\*   process_pkt(Server, Window, RecvPkt); *\/ */
-    /* 	    } */
-    /* 	} */
-    /*   bool = 0; */
-    /*   return S_WAIT_ON_RESPONSE; */
-    /* } */
 
   for (; seq <= Window->top; seq++)
     {
@@ -461,8 +441,8 @@ STATE file_eof(sock *Server)
 	  return S_FINISH;
 	}
     }
-  free(SendPkt);
-  free(RecvPkt);
+  free_pkt(SendPkt);
+  free_pkt(RecvPkt);
   return S_FINISH;  
 }
 

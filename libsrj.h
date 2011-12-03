@@ -263,4 +263,10 @@ void send_frame(sock *Conn, frame *Frame);
 void print_window(window *Window);
 void print_frame_state(frame *Frame);
 
+//utill stuff
+void free_pkt(pkt *Pkt);
+void free_window(window *Window);
+void free_frame(frame *Frame);
+
+
 #endif

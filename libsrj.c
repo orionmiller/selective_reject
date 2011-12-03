@@ -508,3 +508,38 @@ frame *frame_alloc(sock *Conn)
   Frame->state = FRAME_EMPTY;
   return Frame;
 }
+
+
+void free_pkt(pkt *Pkt)
+{
+  if(Pkt)
+    {
+      free(Pkt->Hdr);
+      free(Pkt->data);
+      free(Pkt);
+    }
+}
+
+void free_window(window *Window)
+{
+  uint32_t i;
+  if (Window)
+    {
+      for (i = 0; i < Window->size && Window->Frame[i]; i++)
+	{
+	  free_frame(Window->Frame[i]);
+	}
+      free(Window->Frame);
+      free(Window);
+    }
+}
+
+void free_frame(frame *Frame)
+{
+  if (Frame)
+    {
+      free_pkt(Frame->Pkt);
+      free(Frame);
+    }
+}
+
